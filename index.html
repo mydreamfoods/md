@@ -713,7 +713,7 @@ function renderKPI(rows, cols, sheetName) {
     }
 
   } else {
-    const skipRe = /timestamp|date|\bdt\b|time|name|supervisor|shift|remark|reason|source|segment|category/i;
+    const skipRe = /timestamp|date|\bdt\b|time|name|supervisor|shift|remark|reason|source|segment|category|[\u0900-\u097F]/i;
     cards = [{label:'Total Rows', value:rows.length, cls:'accent'}];
     let n = 0;
     const clss = ['green','orange','accent'];
@@ -740,11 +740,21 @@ const COL_RENAME = {
   'Material Taken By contractor':             'Contractor',
   'Material taken By ( contractor person Name) ': 'Contractor Person',
   'Material taken By ( contractor person Name)':  'Contractor Person',
+  // Unloading sheet
+  'Date / दिनांक':                            'Date',
+  'Vehicle Number / वाहन क्रमांक':            'Vehicle Number',
+  'Bill Number / बिल नंबर':                   'Bill Number',
+  'Party Name / पार्टी का नाम':               'Party Name',
+  'Qty / संख्या ':                             'Qty',
+  'Qty / संख्या':                              'Qty',
+  'Qty in Boxes / Bags / Rolls / Bundle / Packet\nसंख्या बॉक्सेस में / बैग्स / रोल्स / बंडल / पैकेट ': 'Qty in Boxes',
+  'Qty in Boxes / Bags / Rolls / Bundle / Packet\nसंख्या बॉक्सेस में / बैग्स / रोल्स / बंडल / पैकेट':  'Qty in Boxes',
+  'Unloaded By: (Supervisor Name)':           'Unloaded By',
 };
 
 // Columns to hide per sheet (regex on sheet name → array of col regexes)
 const HIDE_COLS = {
-  'guard':  [/bill\s*number|बिल/i],
+  'guard': [/bill\s*number\s*\/\s*बिल|बिल/i],
 };
 
 // Columns to merge into one for Stock Details
@@ -893,6 +903,11 @@ function renderTable() {
     if (hkGroups[col]) return hkGroups[col].label;
     if (COL_RENAME[col]) return COL_RENAME[col];
     if (COL_RENAME[col.trim()]) return COL_RENAME[col.trim()];
+    // Strip Hindi suffix (everything after ' / ' or newline) for fuzzy match
+    const stripped = col.split(/\s*\/\s*[\u0900-\u097F]|\n/)[0].trim();
+    if (COL_RENAME[stripped]) return COL_RENAME[stripped];
+    // If col contains Hindi chars, return only the English part
+    if (/[\u0900-\u097F]/.test(col)) return stripped || col;
     return col;
   }
 
