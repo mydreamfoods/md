@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MyDream Factory Dashboard</title>
+<title>MyDreem Factory Dashboard</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
   :root {
@@ -213,7 +213,7 @@
 
 <div id="sidebar">
   <div class="sidebar-header">
-    <div class="sidebar-logo">MY DREAM FOODS LTD</div>
+    <div class="sidebar-logo">MY DREAM FOODS</div>
     <div class="sidebar-title">MDF Factory Dashboard</div>
     <div class="sidebar-subtitle" id="sheet-subtitle">Loading…</div>
   </div>
@@ -298,6 +298,12 @@ function parseRawDate(val) {
   // YYYY-MM-DD
   const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (m2) return `${m2[1]}-${m2[2]}-${m2[3]}`;
+  // Google Sheets serial number (e.g. 46198) — days since 30 Dec 1899
+  const serial = parseInt(s);
+  if (!isNaN(serial) && serial > 40000 && serial < 60000) {
+    const d = new Date((serial - 25569) * 86400000); // 25569 = days from 1899-12-30 to 1970-01-01
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+  }
   return null;
 }
 
@@ -813,17 +819,34 @@ function renderTable() {
   document.getElementById('row-count').textContent = total + (selectedDates.size ? ` / ${rows.length}` : '') + ' rows';
 
   // ── SHEET FLAGS ──
-  const isWastageSheet    = /wastage|waste/i.test(activeTab);
-  const isProductionSheet = /production|produce/i.test(activeTab);
-  const isStockSheet      = /stock/i.test(activeTab);
-  const isGuardSheet      = /guard/i.test(activeTab);
+  const isWastageSheet      = /wastage|waste/i.test(activeTab);
+  const isProductionSheet   = /production|produce/i.test(activeTab);
+  const isStockSheet        = /stock/i.test(activeTab);
+  const isGuardSheet        = /guard/i.test(activeTab);
+  const isHouseKeepingSheet = /housekeeping|house.keeping/i.test(activeTab);
 
-  // ── STOCK: detect 3 material cols to merge ──
+  // ── STOCK: detect material cols to merge ──
   let materialMergeCols = [];
-  let materialMergeLabel = 'Material';
   if (isStockSheet) {
     materialMergeCols = cols.filter(c => MATERIAL_MERGE_COLS.some(re => re.test(c)));
   }
+
+  // ── HOUSEKEEPING: define column merge groups ──
+  // Each group: { key: virtual col name, label: display name, re: regex to match cols }
+  const HK_MERGE_GROUPS = isHouseKeepingSheet ? [
+    { key: '__hk_task__',  label: 'Task',  re: /total\s*employee|cleaning\s*area/i },
+    { key: '__hk_image__', label: 'Image', re: /attendance\s*image|image\s*upload/i },
+  ] : [];
+
+  // Build map: original col → virtual key (for HK merges)
+  const hkMergeMap = {};  // col → group key
+  const hkGroups   = {}; // group key → { label, cols[] }
+  HK_MERGE_GROUPS.forEach(g => {
+    hkGroups[g.key] = { label: g.label, cols: [] };
+    cols.forEach(c => {
+      if (g.re.test(c)) { hkMergeMap[c] = g.key; hkGroups[g.key].cols.push(c); }
+    });
+  });
 
   // ── DETERMINE VISIBLE COLS ──
   let visibleCols = cols;
@@ -845,18 +868,29 @@ function renderTable() {
     }
   }
 
-  // Merge material cols for Stock sheet: replace all 3 with one virtual col
+  // Merge material cols for Stock sheet
   let mergedColName = null;
   if (isStockSheet && materialMergeCols.length > 1) {
     mergedColName = '__material_merged__';
-    // Replace first material col with merged, remove rest
     visibleCols = visibleCols.map(c => materialMergeCols.includes(c) ? (materialMergeCols.indexOf(c)===0 ? mergedColName : null) : c)
                              .filter(Boolean);
+  }
+
+  // Apply HouseKeeping merges — replace each group's cols with one virtual col (first occurrence)
+  if (isHouseKeepingSheet && Object.keys(hkMergeMap).length) {
+    const seen = new Set();
+    visibleCols = visibleCols.map(c => {
+      const gKey = hkMergeMap[c];
+      if (!gKey) return c;
+      if (!seen.has(gKey)) { seen.add(gKey); return gKey; }
+      return null; // remove subsequent cols in same group
+    }).filter(Boolean);
   }
 
   // ── COLUMN DISPLAY NAME ──
   function colDisplayName(col) {
     if (col === mergedColName) return 'Material';
+    if (hkGroups[col]) return hkGroups[col].label;
     if (COL_RENAME[col]) return COL_RENAME[col];
     if (COL_RENAME[col.trim()]) return COL_RENAME[col.trim()];
     return col;
@@ -908,7 +942,23 @@ function renderTable() {
   slice.forEach(row => {
     html += '<tr>';
     visibleCols.forEach(col => {
-      // Merged material col
+      // HouseKeeping merged col (Task / Image)
+      if (hkGroups[col]) {
+        const grp = hkGroups[col];
+        const isImg = /image/i.test(grp.label);
+        if (isImg) {
+          // Combine all image URLs from the group cols
+          const allUrls = grp.cols.map(c => String(row[c]||'').trim()).filter(Boolean).join(',');
+          html += `<td>${allUrls ? renderPhotoCell(allUrls) : '<span class="td-empty">—</span>'}</td>`;
+        } else {
+          // Combine text values
+          const combined = grp.cols.map(c => String(row[c]||'').trim()).filter(Boolean).join(' · ');
+          html += `<td>${combined || '<span class="td-empty">—</span>'}</td>`;
+        }
+        return;
+      }
+
+      // Stock merged material col
       if (col === mergedColName) {
         const combined = materialMergeCols.map(c => String(row[c]||'').trim()).filter(Boolean).join(' · ');
         html += `<td>${combined || '<span class="td-empty">—</span>'}</td>`;
