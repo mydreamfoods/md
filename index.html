@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MyDreem Factory Dashboard</title>
+<title>MyDream Factory Dashboard</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
   :root {
@@ -213,7 +213,7 @@
 
 <div id="sidebar">
   <div class="sidebar-header">
-    <div class="sidebar-logo">MY DREAM FOODS</div>
+    <div class="sidebar-logo">MY DREAM FOODS LTD</div>
     <div class="sidebar-title">MDF Factory Dashboard</div>
     <div class="sidebar-subtitle" id="sheet-subtitle">Loading…</div>
   </div>
@@ -633,6 +633,79 @@ function renderKPI(rows, cols, sheetName) {
       }, 0);
       cards.push({label:'Total Employee', value:total, cls:'green'});
     }
+
+  // Daily Manpower: grouped totals
+  } else if (/manpower/i.test(sheetName)) {
+    function sumCol(re) {
+      const col = cols.find(c => re.test(c));
+      if (!col) return null;
+      const total = rows.reduce((s,r) => {
+        const v = parseFloat(String(r[col]||'0').replace(/,/g,''));
+        return s + (isNaN(v)?0:v);
+      }, 0);
+      return { label: col, total };
+    }
+
+    // Find all numeric cols grouped by keyword
+    function sumGroup(res) {
+      return cols
+        .filter(c => res.some(re => re.test(c)))
+        .map(c => {
+          const total = rows.reduce((s,r) => {
+            const v = parseFloat(String(r[c]||'0').replace(/,/g,''));
+            return s + (isNaN(v)?0:v);
+          }, 0);
+          return { label: c, total };
+        });
+    }
+
+    const mistriCol  = cols.find(c => /mistri/i.test(c));
+    const mistriTotal = mistriCol ? rows.reduce((s,r) => {
+      const v = parseFloat(String(r[mistriCol]||'0').replace(/,/g,'')); return s+(isNaN(v)?0:v);
+    }, 0) : null;
+
+    const operatorCols = cols.filter(c => /operator/i.test(c) && !/extra|worker/i.test(c));
+    const workerCols   = cols.filter(c => /worker/i.test(c)   && !/extra/i.test(c));
+    const extraCols    = cols.filter(c => /extra\s*staff|extra/i.test(c));
+
+    function colSum(c) {
+      return rows.reduce((s,r) => { const v=parseFloat(String(r[c]||'0').replace(/,/g,'')); return s+(isNaN(v)?0:v); }, 0);
+    }
+    function groupTotal(colArr) { return colArr.reduce((s,c)=>s+colSum(c),0); }
+
+    cards.push({label:'Total Rows', value:rows.length, cls:'accent'});
+    if (mistriTotal !== null) cards.push({label:'Mistri', value:mistriTotal, cls:'green'});
+
+    // Operator group
+    if (operatorCols.length) {
+      const total = groupTotal(operatorCols);
+      cards.push({label:'Operator - Total', value:total, cls:'orange'});
+      operatorCols.forEach(c => {
+        const lbl = c.replace(/operator/gi,'').replace(/[()]/g,'').trim() || 'Operator';
+        cards.push({label:`Operator (${lbl||c})`, value:colSum(c), cls:'orange'});
+      });
+    }
+
+    // Worker group
+    if (workerCols.length) {
+      const total = groupTotal(workerCols);
+      cards.push({label:'Worker - Total', value:total, cls:'accent'});
+      workerCols.forEach(c => {
+        const lbl = c.replace(/worker/gi,'').replace(/[()]/g,'').trim() || 'Worker';
+        cards.push({label:`Worker (${lbl||c})`, value:colSum(c), cls:'accent'});
+      });
+    }
+
+    // Extra Staff group
+    if (extraCols.length) {
+      const total = groupTotal(extraCols);
+      cards.push({label:'Extra Staff - Total', value:total, cls:'green'});
+      extraCols.forEach(c => {
+        const lbl = c.replace(/extra\s*staff/gi,'').replace(/extra/gi,'').replace(/[()]/g,'').trim() || 'Extra';
+        cards.push({label:`Extra Staff (${lbl||c})`, value:colSum(c), cls:'green'});
+      });
+    }
+
   } else {
     const skipRe = /timestamp|date|\bdt\b|time|name|supervisor|shift|remark|reason|source|segment|category/i;
     cards = [{label:'Total Rows', value:rows.length, cls:'accent'}];
@@ -759,7 +832,9 @@ function renderTable() {
   if (isWastageSheet || isProductionSheet || /machine.run|run.status/i.test(activeTab)) {
     visibleCols = visibleCols.filter(col => filtered.some(r => {
       const v = r[col];
-      return v !== '' && v != null && v !== 0 && String(v).trim() !== '' && String(v) !== '0';
+      if (v === '' || v == null || v === undefined) return false;
+      const s = String(v).trim();
+      return s !== '' && s !== '0' && s !== '—';
     }));
   }
 
