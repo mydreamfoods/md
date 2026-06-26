@@ -445,9 +445,9 @@ function fetchAll(forceRefresh=false) {
   return new Promise((resolve, reject) => {
     const cb = '_gas_' + Date.now();
     const s  = document.createElement('script');
-    const t  = setTimeout(() => { cleanup(); reject(new Error('Request timed out')); }, 20000);
+    const t  = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, 25000);
     window[cb] = data => { cleanup(); resolve(data.data || data); };
-    s.onerror  = () => { cleanup(); reject(new Error('Script load failed')); };
+    s.onerror  = () => { cleanup(); reject(new Error('network')); };
     const days = window._dashDays || 7;
     s.src = GAS_URL + '?callback=' + cb + '&days=' + days + (forceRefresh ? '&refresh=1' : '') + '&t=' + Date.now();
     document.head.appendChild(s);
@@ -455,16 +455,32 @@ function fetchAll(forceRefresh=false) {
   });
 }
 
+async function fetchWithRetry(forceRefresh=false, maxAttempts=3) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const el = document.getElementById('init-msg');
+      if (el) el.textContent = attempt > 1
+        ? `Retrying… (attempt ${attempt}/${maxAttempts})`
+        : 'Connecting to Google Sheets…';
+      return await fetchAll(attempt === 1 ? forceRefresh : false);
+    } catch(e) {
+      if (attempt === maxAttempts) throw e;
+      // Wait 2s before retry
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+}
+
 // ── INIT ─────────────────────────────────────────────────────
 async function init(forceRefresh=false) {
   try {
     let tick = 0;
-    const msgs = ['Connecting to Google Sheets…','Fetching sheet data…','Almost there…','Still loading, please wait…'];
+    const msgs = ['Connecting to Google Sheets…','Fetching sheet data…','Almost there…','Still loading…'];
     const ticker = setInterval(() => {
       const el = document.getElementById('init-msg');
-      if (el) el.textContent = msgs[Math.min(++tick, msgs.length - 1)];
+      if (el && !el.textContent.startsWith('Retry')) el.textContent = msgs[Math.min(++tick, msgs.length-1)];
     }, 3000);
-    const raw = await fetchAll(forceRefresh);
+    const raw = await fetchWithRetry(forceRefresh);
     clearInterval(ticker);
 
     allData = {};
@@ -495,9 +511,13 @@ async function init(forceRefresh=false) {
     switchTab(tabs[0]);
     document.getElementById('last-updated').textContent = 'Loaded ' + new Date().toLocaleTimeString('en-IN');
   } catch(e) {
+    const isNetwork = e.message === 'network' || e.message === 'timeout';
     document.getElementById('init-msg').innerHTML =
-      `<span style="color:var(--danger)">⚠ ${e.message}</span><br>
-       <button class="page-btn" onclick="init()" style="margin-top:12px">Retry</button>`;
+      `<span style="color:var(--danger)">⚠ ${isNetwork ? 'Could not reach Google Sheets' : e.message}</span>
+       <div style="font-size:11px;color:var(--text-dim);margin-top:8px;max-width:320px;text-align:center">
+         ${isNetwork ? 'Check internet connection. GAS URL may be unreachable from file:// origin.' : ''}
+       </div>
+       <button class="page-btn" onclick="init()" style="margin-top:14px;padding:8px 20px">🔄 Retry</button>`;
   }
 }
 
@@ -558,28 +578,46 @@ function switchTab(name) {
 function buildDateFilter() {
   const list = document.getElementById('date-list');
   list.innerHTML = '';
-  // Save current selection before rebuilding
   const prevSelected = new Set(selectedDates);
   selectedDates.clear();
   updateDateBadge();
 
-  if (!dateColName) {
+  // Collect rows to extract dates from
+  let sourceRows = [];
+
+  if (isAnalysisView) {
+    // Use both wastage sheets for date list
+    const tabs = Object.keys(allData);
+    const wastageTab      = tabs.find(t => /wastage|waste/i.test(t) && !/milky|cube/i.test(t));
+    const milkyWastageTab = tabs.find(t => /milky/i.test(t) && /wastage|waste/i.test(t));
+    if (wastageTab)      sourceRows = sourceRows.concat(allData[wastageTab]      || []);
+    if (milkyWastageTab) sourceRows = sourceRows.concat(allData[milkyWastageTab] || []);
+  } else {
+    sourceRows = allData[activeTab] || [];
+  }
+
+  if (!sourceRows.length) {
+    list.innerHTML = '<div class="no-dates">No dates found</div>';
+    return;
+  }
+
+  const cols = Object.keys(sourceRows[0]);
+  const tsCol = cols.find(c => isTimestampCol(c));
+  const dCol  = cols.find(c => isDateCol(c));
+  const filterCol = tsCol || dCol || dateColName;
+
+  if (!filterCol) {
     list.innerHTML = '<div class="no-dates">No date column found</div>';
     return;
   }
 
-  const rows = allData[activeTab] || [];
-  const tsColName = rows.length ? Object.keys(rows[0]).find(c => isTimestampCol(c)) : null;
-  const filterCol = tsColName || dateColName;
   const uniq = [...new Set(
-    rows.map(r => parseDate(r[filterCol])).filter(Boolean)
+    sourceRows.map(r => parseDate(r[filterCol])).filter(Boolean)
   )].sort((a,b) => b.localeCompare(a));
 
   if (!uniq.length) { list.innerHTML = '<div class="no-dates">No dates found</div>'; return; }
 
   const latestKey = uniq[0];
-
-  // Restore prev selection if those dates exist in this sheet, else default to latest
   const matchedPrev = uniq.filter(k => prevSelected.has(k));
   const toSelect = matchedPrev.length ? new Set(matchedPrev) : new Set([latestKey]);
 
@@ -599,14 +637,18 @@ function toggleDate(key) {
   if (selectedDates.has(key)) selectedDates.delete(key);
   else selectedDates.add(key);
   updateDateBadge();
-  page = 1; renderTable();
+  page = 1;
+  if (isAnalysisView) switchToWastageAnalysis(true);
+  else renderTable();
 }
 
 function clearDates() {
   selectedDates.clear();
   document.querySelectorAll('#date-list input[type=checkbox]').forEach(c => c.checked = false);
   updateDateBadge();
-  page = 1; renderTable();
+  page = 1;
+  if (isAnalysisView) switchToWastageAnalysis(true);
+  else renderTable();
 }
 
 function updateDateBadge() {
@@ -1040,13 +1082,13 @@ function changeDays(val) {
 
 // ── WASTAGE ANALYSIS ─────────────────────────────────────────
 
-function switchToWastageAnalysis() {
+function switchToWastageAnalysis(fromDateToggle=false) {
   isAnalysisView = true;
   setActiveNav('nav-wastage-analysis');
   document.getElementById('tab-title').textContent = '📊  Wastage Analysis';
   document.getElementById('row-count').textContent = '';
   document.getElementById('kpi-bar').innerHTML = '';
-  document.getElementById('search-box').value = '';
+  if (!fromDateToggle) document.getElementById('search-box').value = '';
 
   const tabs = Object.keys(allData);
 
