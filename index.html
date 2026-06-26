@@ -445,9 +445,9 @@ function fetchAll(forceRefresh=false) {
   return new Promise((resolve, reject) => {
     const cb = '_gas_' + Date.now();
     const s  = document.createElement('script');
-    const t  = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, 25000);
+    const t  = setTimeout(() => { cleanup(); reject(new Error('Request timed out')); }, 20000);
     window[cb] = data => { cleanup(); resolve(data.data || data); };
-    s.onerror  = () => { cleanup(); reject(new Error('network')); };
+    s.onerror  = () => { cleanup(); reject(new Error('Script load failed')); };
     const days = window._dashDays || 7;
     s.src = GAS_URL + '?callback=' + cb + '&days=' + days + (forceRefresh ? '&refresh=1' : '') + '&t=' + Date.now();
     document.head.appendChild(s);
@@ -455,32 +455,16 @@ function fetchAll(forceRefresh=false) {
   });
 }
 
-async function fetchWithRetry(forceRefresh=false, maxAttempts=3) {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      const el = document.getElementById('init-msg');
-      if (el) el.textContent = attempt > 1
-        ? `Retrying… (attempt ${attempt}/${maxAttempts})`
-        : 'Connecting to Google Sheets…';
-      return await fetchAll(attempt === 1 ? forceRefresh : false);
-    } catch(e) {
-      if (attempt === maxAttempts) throw e;
-      // Wait 2s before retry
-      await new Promise(r => setTimeout(r, 2000));
-    }
-  }
-}
-
 // ── INIT ─────────────────────────────────────────────────────
 async function init(forceRefresh=false) {
   try {
     let tick = 0;
-    const msgs = ['Connecting to Google Sheets…','Fetching sheet data…','Almost there…','Still loading…'];
+    const msgs = ['Connecting to Google Sheets…','Fetching sheet data…','Almost there…','Still loading, please wait…'];
     const ticker = setInterval(() => {
       const el = document.getElementById('init-msg');
-      if (el && !el.textContent.startsWith('Retry')) el.textContent = msgs[Math.min(++tick, msgs.length-1)];
+      if (el) el.textContent = msgs[Math.min(++tick, msgs.length - 1)];
     }, 3000);
-    const raw = await fetchWithRetry(forceRefresh);
+    const raw = await fetchAll(forceRefresh);
     clearInterval(ticker);
 
     allData = {};
@@ -511,13 +495,9 @@ async function init(forceRefresh=false) {
     switchTab(tabs[0]);
     document.getElementById('last-updated').textContent = 'Loaded ' + new Date().toLocaleTimeString('en-IN');
   } catch(e) {
-    const isNetwork = e.message === 'network' || e.message === 'timeout';
     document.getElementById('init-msg').innerHTML =
-      `<span style="color:var(--danger)">⚠ ${isNetwork ? 'Could not reach Google Sheets' : e.message}</span>
-       <div style="font-size:11px;color:var(--text-dim);margin-top:8px;max-width:320px;text-align:center">
-         ${isNetwork ? 'Check internet connection. GAS URL may be unreachable from file:// origin.' : ''}
-       </div>
-       <button class="page-btn" onclick="init()" style="margin-top:14px;padding:8px 20px">🔄 Retry</button>`;
+      `<span style="color:var(--danger)">⚠ ${e.message}</span><br>
+       <button class="page-btn" onclick="init()" style="margin-top:12px">Retry</button>`;
   }
 }
 
