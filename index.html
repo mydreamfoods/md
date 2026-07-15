@@ -682,77 +682,125 @@ function renderKPI(rows, cols, sheetName) {
       cards.push({label:'Total Employee', value:total, cls:'green'});
     }
 
-  // Daily Manpower: grouped totals
+  // Daily Manpower: grouped cards
   } else if (/manpower/i.test(sheetName)) {
-    function sumCol(re) {
-      const col = cols.find(c => re.test(c));
-      if (!col) return null;
-      const total = rows.reduce((s,r) => {
-        const v = parseFloat(String(r[col]||'0').replace(/,/g,''));
-        return s + (isNaN(v)?0:v);
-      }, 0);
-      return { label: col, total };
+    function colSum(c) {
+      return rows.reduce((s,r) => { const v=parseFloat(String(r[c]||'0').replace(/,/g,'')); return s+(isNaN(v)?0:v); }, 0);
     }
 
-    // Find all numeric cols grouped by keyword
-    function sumGroup(res) {
-      return cols
-        .filter(c => res.some(re => re.test(c)))
-        .map(c => {
-          const total = rows.reduce((s,r) => {
-            const v = parseFloat(String(r[c]||'0').replace(/,/g,''));
-            return s + (isNaN(v)?0:v);
-          }, 0);
-          return { label: c, total };
-        });
-    }
-
-    const mistriCol  = cols.find(c => /mistri/i.test(c));
-    const mistriTotal = mistriCol ? rows.reduce((s,r) => {
-      const v = parseFloat(String(r[mistriCol]||'0').replace(/,/g,'')); return s+(isNaN(v)?0:v);
-    }, 0) : null;
-
+    const mistriCol    = cols.find(c => /mistri/i.test(c));
     const operatorCols = cols.filter(c => /operator/i.test(c) && !/extra|worker/i.test(c));
     const workerCols   = cols.filter(c => /worker/i.test(c)   && !/extra/i.test(c));
     const extraCols    = cols.filter(c => /extra\s*staff|extra/i.test(c));
 
-    function colSum(c) {
+    function maleCol(arr)   { return arr.find(c => /male/i.test(c) && !/female/i.test(c)); }
+    function femaleCol(arr) { return arr.find(c => /female/i.test(c)); }
+    function groupTotal(arr){ return arr.reduce((s,c)=>s+colSum(c),0); }
+
+    function groupCard(label, emoji, colArr, cls) {
+      const total  = groupTotal(colArr);
+      const mCol   = maleCol(colArr);
+      const fCol   = femaleCol(colArr);
+      const male   = mCol   ? colSum(mCol)   : null;
+      const female = fCol   ? colSum(fCol)   : null;
+      return `<div class="kpi-card" style="max-width:260px">
+        <div class="kpi-label">${emoji} ${label}</div>
+        <div style="display:flex;align-items:flex-start;gap:14px;margin-top:10px">
+          <div>
+            <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px">TOTAL</div>
+            <div class="kpi-value ${cls}" style="font-size:24px">${total}</div>
+          </div>
+          ${male!==null?`<div style="border-left:1px solid var(--border);padding-left:14px">
+            <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px">MALE</div>
+            <div style="font-size:20px;font-weight:700;font-family:var(--mono);color:var(--accent)">${male}</div>
+          </div>`:''}
+          ${female!==null?`<div style="border-left:1px solid var(--border);padding-left:14px">
+            <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px">FEMALE</div>
+            <div style="font-size:20px;font-weight:700;font-family:var(--mono);color:var(--accent3)">${female}</div>
+          </div>`:''}
+        </div>
+      </div>`;
+    }
+
+    let html = `
+      <div class="kpi-card" style="max-width:130px">
+        <div class="kpi-label">Total Rows</div>
+        <div class="kpi-value accent">${rows.length}</div>
+      </div>`;
+    if (mistriCol) html += `
+      <div class="kpi-card" style="max-width:130px">
+        <div class="kpi-label">Mistri</div>
+        <div class="kpi-value green">${colSum(mistriCol)}</div>
+      </div>`;
+    if (operatorCols.length) html += groupCard('Operator', '🔧', operatorCols, 'orange');
+    if (workerCols.length)   html += groupCard('Worker',   '👷', workerCols,   'green');
+    if (extraCols.length)    html += groupCard('Extra Staff','➕', extraCols,  'accent');
+
+    document.getElementById('kpi-bar').innerHTML = html;
+    return;
+
+  // Production: Total Qty + Name-wise + Segment-wise breakdown
+  } else if (/production|produce/i.test(sheetName)) {
+    const qtyCol     = cols.find(c => /quantity|qty/i.test(c));
+    const nameCol    = cols.find(c => /^name$/i.test(c));
+    const segmentCol = cols.find(c => /segment/i.test(c));
+
+    function colSumP(c) {
       return rows.reduce((s,r) => { const v=parseFloat(String(r[c]||'0').replace(/,/g,'')); return s+(isNaN(v)?0:v); }, 0);
     }
-    function groupTotal(colArr) { return colArr.reduce((s,c)=>s+colSum(c),0); }
-
-    cards.push({label:'Total Rows', value:rows.length, cls:'accent'});
-    if (mistriTotal !== null) cards.push({label:'Mistri', value:mistriTotal, cls:'green'});
-
-    // Operator group
-    if (operatorCols.length) {
-      const total = groupTotal(operatorCols);
-      cards.push({label:'Operator - Total', value:total, cls:'orange'});
-      operatorCols.forEach(c => {
-        const lbl = c.replace(/operator/gi,'').replace(/[()]/g,'').trim() || 'Operator';
-        cards.push({label:`Operator (${lbl||c})`, value:colSum(c), cls:'orange'});
+    function groupBy(groupCol) {
+      const map = {};
+      rows.forEach(r => {
+        const key = String(r[groupCol]||'').trim() || '—';
+        const qty = qtyCol ? parseFloat(String(r[qtyCol]||'0').replace(/,/g,'')) : 1;
+        map[key] = (map[key]||0) + (isNaN(qty)?0:qty);
       });
+      return Object.entries(map).sort((a,b)=>b[1]-a[1]);
+    }
+    function fmtN(v){ return v%1===0?v.toLocaleString('en-IN'):v.toFixed(1); }
+
+    const totalQty         = qtyCol ? colSumP(qtyCol) : rows.length;
+    const nameBreakdown    = nameCol    ? groupBy(nameCol)    : [];
+    const segmentBreakdown = segmentCol ? groupBy(segmentCol) : [];
+
+    let html = `
+    <div class="kpi-card" style="max-width:150px">
+      <div class="kpi-label">Total Qty</div>
+      <div class="kpi-value green">${fmtN(totalQty)}</div>
+    </div>
+    <div class="kpi-card" style="max-width:150px">
+      <div class="kpi-label">Total Rows</div>
+      <div class="kpi-value accent">${rows.length}</div>
+    </div>`;
+
+    if (nameBreakdown.length) {
+      html += `<div class="kpi-card" style="flex:2;max-width:none">
+        <div class="kpi-label" style="margin-bottom:10px">👤 Name-wise Qty</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">`;
+      nameBreakdown.forEach(([name,qty]) => {
+        html += `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:6px 12px;min-width:110px">
+          <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px">${name}</div>
+          <div style="font-size:16px;font-weight:700;font-family:var(--mono);color:var(--accent3)">${fmtN(qty)}</div>
+        </div>`;
+      });
+      html += `</div></div>`;
     }
 
-    // Worker group
-    if (workerCols.length) {
-      const total = groupTotal(workerCols);
-      cards.push({label:'Worker - Total', value:total, cls:'accent'});
-      workerCols.forEach(c => {
-        const lbl = c.replace(/worker/gi,'').replace(/[()]/g,'').trim() || 'Worker';
-        cards.push({label:`Worker (${lbl||c})`, value:colSum(c), cls:'accent'});
+    if (segmentBreakdown.length) {
+      html += `<div class="kpi-card" style="flex:2;max-width:none">
+        <div class="kpi-label" style="margin-bottom:10px">🏷️ Segment-wise Qty</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">`;
+      segmentBreakdown.forEach(([seg,qty]) => {
+        html += `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:6px 12px;min-width:110px">
+          <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px">${seg}</div>
+          <div style="font-size:16px;font-weight:700;font-family:var(--mono);color:var(--accent2)">${fmtN(qty)}</div>
+        </div>`;
       });
+      html += `</div></div>`;
     }
 
-    // Extra Staff group
-    if (extraCols.length) {
-      const total = groupTotal(extraCols);
-      cards.push({label:'Extra Staff - Total', value:total, cls:'green'});
-      extraCols.forEach(c => {
-        const lbl = c.replace(/extra\s*staff/gi,'').replace(/extra/gi,'').replace(/[()]/g,'').trim() || 'Extra';
-        cards.push({label:`Extra Staff (${lbl||c})`, value:colSum(c), cls:'green'});
-      });
-    }
+    document.getElementById('kpi-bar').innerHTML = html;
+    return;
 
   } else {
     const skipRe = /timestamp|date|\bdt\b|time|name|supervisor|shift|remark|reason|source|segment|category|[\u0900-\u097F]/i;
@@ -1088,7 +1136,10 @@ function switchToWastageAnalysis(fromDateToggle=false) {
   document.getElementById('tab-title').textContent = '📊  Wastage Analysis';
   document.getElementById('row-count').textContent = '';
   document.getElementById('kpi-bar').innerHTML = '';
-  if (!fromDateToggle) document.getElementById('search-box').value = '';
+  if (!fromDateToggle) {
+    document.getElementById('search-box').value = '';
+    buildDateFilter(); // populate date dropdown from wastage sheets
+  }
 
   const tabs = Object.keys(allData);
 
