@@ -1556,18 +1556,6 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
       })()}
     </div>
 
-    <!-- RABDI WASTAGE BREAKDOWN -->
-    <div class="analysis-card full">
-      <h3>🥛 Rabdi Wastage Breakdown</h3>
-      <div class="bar-wrap">${barHTML(rabdiBreakdown, 'fill-rabdi')}</div>
-    </div>
-
-    <!-- MILKY CUBE WASTAGE BREAKDOWN -->
-    <div class="analysis-card full">
-      <h3>🍫 Milky Cube Wastage Breakdown</h3>
-      <div class="bar-wrap">${barHTML(milkyBreakdown, 'fill-milky')}</div>
-    </div>
-
   </div>`;
 
   document.getElementById('content').innerHTML = html;
