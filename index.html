@@ -1297,12 +1297,15 @@ function switchToWastageAnalysis(fromDateToggle=false) {
 }
 
 function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dateDisplay) {
+  try {
 
   function fmtN(v) { return v%1===0 ? v.toLocaleString('en-IN') : v.toFixed(2); }
 
   // ── CLASSIFY PRODUCTION ROWS ──
-  function classifyProduct(productName) {
+  function classifyProduct(productName, segmentName) {
     const p = String(productName||'').toLowerCase();
+    const s = String(segmentName||'').toLowerCase();
+    if (/choco.art/i.test(p) || /pencil/i.test(s)) return 'pencil';
     if (/malai/i.test(p))  return 'rabdi';
     if (/imli/i.test(p))   return 'imli';
     if (/wafer/i.test(p))  return 'wafer';
@@ -1316,22 +1319,28 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
     }, 0);
   }
 
-  const prodRabdi = prodRows.filter(r => classifyProduct(r['Product']) === 'rabdi');
-  const prodMilky = prodRows.filter(r => classifyProduct(r['Product']) === 'milky');
-  const prodImli  = prodRows.filter(r => classifyProduct(r['Product']) === 'imli');
-  const prodWafer = prodRows.filter(r => classifyProduct(r['Product']) === 'wafer');
+  const prodRabdi  = prodRows.filter(r => classifyProduct(r['Product'], r['Segment']) === 'rabdi');
+  const prodMilky  = prodRows.filter(r => classifyProduct(r['Product'], r['Segment']) === 'milky');
+  const prodImli   = prodRows.filter(r => classifyProduct(r['Product'], r['Segment']) === 'imli');
+  const prodWafer  = prodRows.filter(r => classifyProduct(r['Product'], r['Segment']) === 'wafer');
+  const prodPencil = prodRows.filter(r => classifyProduct(r['Product'], r['Segment']) === 'pencil');
 
-  const prodRabdiQty = sumQty(prodRabdi);
-  const prodMilkyQty = sumQty(prodMilky);
-  const prodImliQty  = sumQty(prodImli);
-  const prodWaferQty = sumQty(prodWafer);
-  const prodTotal    = prodRabdiQty + prodMilkyQty + prodImliQty + prodWaferQty;
+  const prodRabdiQty  = sumQty(prodRabdi);
+  const prodMilkyQty  = sumQty(prodMilky);
+  const prodImliQty   = sumQty(prodImli);
+  const prodWaferQty  = sumQty(prodWafer);
+  const prodPencilQty = sumQty(prodPencil);
+  const prodTotal     = prodRabdiQty + prodMilkyQty + prodImliQty + prodWaferQty + prodPencilQty;
+
+  // ── PENCIL WASTAGE: from Wastage Rabdi where Wastage Type = PENCIL ──
+  const pencilWastageRows = rabdiWastageRows.filter(r => /pencil/i.test(String(r['Wastage Type']||'')));
+  const rabdiOnlyRows     = rabdiWastageRows.filter(r => !/pencil/i.test(String(r['Wastage Type']||'')));
 
   // ── SUM WASTAGE COLS ──
   function sumWastageCols(rows, colFilter) {
     if (!rows.length) return 0;
     const cols = Object.keys(rows[0]).filter(c =>
-      /wastage|waste/i.test(c) && !/timestamp|date|time|reason|remark|photo|note|floor/i.test(c)
+      /wastage|waste/i.test(c) && !/timestamp|date|time|reason|remark|photo|note|floor|type/i.test(c)
       && (colFilter ? colFilter(c) : true)
     );
     return rows.reduce((s,r) => {
@@ -1340,38 +1349,11 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
     }, 0);
   }
 
-  function colBreakdown(rows) {
-    if (!rows.length) return [];
-    const cols = Object.keys(rows[0]).filter(c =>
-      /wastage|waste/i.test(c) && !/timestamp|date|time|reason|remark|photo|note|floor/i.test(c)
-    );
-    return cols.map(c => {
-      const total = rows.reduce((s,r)=>{ const v=parseFloat(String(r[c]||'0').replace(/,/g,'')); return s+(isNaN(v)?0:v); },0);
-      return {col:c, total};
-    }).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
-  }
-
-  const rabdiWastageTotal = sumWastageCols(rabdiWastageRows);
-  const milkyWastageTotal = sumWastageCols(milkyWastageRows);
-  const paperWastage      = sumWastageCols(milkyWastageRows, c => /paper/i.test(c));
-  const grandWastage      = rabdiWastageTotal + milkyWastageTotal;
-
-  const rabdiBreakdown = colBreakdown(rabdiWastageRows);
-  const milkyBreakdown = colBreakdown(milkyWastageRows);
-  const maxBar = Math.max(...rabdiBreakdown.map(x=>x.total), ...milkyBreakdown.map(x=>x.total), 1);
-
-  function shortLabel(col) {
-    return col.replace(/machine\s*wastage/gi,'').replace(/\bwastage\b/gi,'').replace(/\bwaste\b/gi,'').replace(/^\s*[-–]\s*/,'').trim()||col;
-  }
-
-  function barHTML(breakdown, fillClass) {
-    if (!breakdown.length) return `<div style="color:var(--text-dim);font-size:12px;padding:8px 0">No data</div>`;
-    return breakdown.map(({col,total})=>`
-      <div class="bar-item">
-        <div class="bar-meta"><span class="bar-label">${shortLabel(col)}</span><span class="bar-qty">${fmtN(total)}</span></div>
-        <div class="bar-track"><div class="bar-fill ${fillClass}" style="width:${(total/maxBar*100).toFixed(1)}%"></div></div>
-      </div>`).join('');
-  }
+  const rabdiWastageTotal  = sumWastageCols(rabdiOnlyRows);
+  const milkyWastageTotal  = sumWastageCols(milkyWastageRows);
+  const pencilWastageTotal = sumWastageCols(pencilWastageRows);
+  const paperWastage       = sumWastageCols(milkyWastageRows, c => /paper/i.test(c));
+  const grandWastage       = rabdiWastageTotal + milkyWastageTotal + pencilWastageTotal;
 
   // ── PRODUCTION VS WASTAGE CARD ──
   function pvwCard(label, emoji, prodQty, wastageQty, pillClass, valClass) {
@@ -1399,7 +1381,7 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
     <span style="background:rgba(79,142,247,.12);color:var(--accent);border:1px solid rgba(79,142,247,.3);border-radius:20px;padding:4px 14px;font-size:13px;font-weight:600;">${dateDisplay}</span>
   </div>
 
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+  <div style="display:grid;grid-template-columns:repeat(${prodPencilQty>0||pencilWastageTotal>0?5:4},1fr);gap:12px;margin-bottom:16px;">
     <div class="analysis-card" style="margin:0">
       <h3>📋 Overall Summary</h3>
       <div class="stat-row"><span class="stat-label">Total Production</span><span class="stat-val green">${fmtN(prodTotal)}</span></div>
@@ -1407,6 +1389,7 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
       <div class="stat-row"><span class="stat-label">Wastage %</span><span class="stat-val ${prodTotal>0&&(grandWastage/prodTotal*100)>5?'red':'orange'}">${prodTotal>0?((grandWastage/prodTotal)*100).toFixed(1)+'%':'—'}</span></div>
       <div class="stat-row"><span class="stat-label">Rabdi Wastage</span><span class="stat-val orange">${fmtN(rabdiWastageTotal)}</span></div>
       <div class="stat-row"><span class="stat-label">Milky Cube Wastage</span><span class="stat-val accent">${fmtN(milkyWastageTotal)}</span></div>
+      <div class="stat-row"><span class="stat-label">Pencil Wastage</span><span class="stat-val" style="color:#9b87f5">${fmtN(pencilWastageTotal)}</span></div>
       ${paperWastage>0?`<div class="stat-row"><span class="stat-label">🗞️ Paper Wastage</span><span class="stat-val green">${fmtN(paperWastage)}</span></div>`:''}
     </div>
     <div class="analysis-card" style="margin:0">
@@ -1421,6 +1404,12 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
       <div class="stat-row"><span class="stat-label">Wastage</span><span class="stat-val orange">${fmtN(rabdiWastageTotal)}</span></div>
       <div class="stat-row"><span class="stat-label">Wastage %</span><span class="stat-val ${prodRabdiQty>0&&(rabdiWastageTotal/prodRabdiQty*100)>5?'red':'orange'}">${prodRabdiQty>0?((rabdiWastageTotal/prodRabdiQty)*100).toFixed(1)+'%':'—'}</span></div>
     </div>
+    ${prodPencilQty>0||pencilWastageTotal>0?`<div class="analysis-card" style="margin:0">
+      <h3>✏️ Pencil</h3>
+      <div class="stat-row"><span class="stat-label">Production</span><span class="stat-val green">${fmtN(prodPencilQty)}</span></div>
+      <div class="stat-row"><span class="stat-label">Wastage</span><span class="stat-val" style="color:#9b87f5">${fmtN(pencilWastageTotal)}</span></div>
+      <div class="stat-row"><span class="stat-label">Wastage %</span><span class="stat-val ${prodPencilQty>0&&(pencilWastageTotal/prodPencilQty*100)>5?'red':'orange'}">${prodPencilQty>0?((pencilWastageTotal/prodPencilQty)*100).toFixed(1)+'%':'—'}</span></div>
+    </div>`:''}
     <div class="analysis-card" style="margin:0">
       <h3>🍋 Other Products</h3>
       ${prodImliQty>0?`<div class="stat-row"><span class="stat-label">Imli Production</span><span class="stat-val green">${fmtN(prodImliQty)}</span></div>`:''}
@@ -1441,13 +1430,13 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
           return col ? parseDate(r[col]) : null;
         }
 
-        // Build production rows with segment from classifyProduct
+        // Build production rows with correct segment
+        const segMap = { rabdi:'Rabdi', imli:'Imli', wafer:'Wafer', milky:'Milky Cube', pencil:'Pencil' };
         const prodDetail = prodRows.map(r => {
-          const cls = classifyProduct(r['Product']);
-          const segMap = { rabdi:'Rabdi', imli:'Imli', wafer:'Wafer', milky:'Milky Cube' };
+          const cls = classifyProduct(r['Product'], r['Segment']);
           return {
             date: getDateKey(r, prodRows),
-            segment: segMap[cls] || String(r['Segment']||'').trim(),
+            segment: segMap[cls]||cls,
             product: String(r['Product']||'').trim(),
             qty: parseFloat(String(r['Quantity']||'0').replace(/,/g,''))||0,
             cls,
@@ -1471,33 +1460,54 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
           return result;
         }
 
+        function shortWLabel(col) {
+          return col.replace(/machine\s*wastage/gi,'Machine').replace(/\bwastage\b/gi,'').replace(/\bwaste\b/gi,'').replace(/^\s*[-–]\s*/,'').trim()||col;
+        }
+
+        const segColors = { 'Rabdi':'var(--accent3)', 'Milky Cube':'var(--accent)', 'Imli':'#a8e063', 'Wafer':'#f7cd5c', 'Pencil':'#9b87f5' };
+
+        // Wastage detail — split pencil rows from rabdi
+        function extractWastageDetail(wRows, defaultSeg) {
+          if (!wRows.length) return [];
+          const wastCols = Object.keys(wRows[0]).filter(c =>
+            /wastage|waste/i.test(c) && !/timestamp|date|time|reason|remark|photo|note|floor|type/i.test(c)
+          );
+          const result = [];
+          wRows.forEach(r => {
+            const dk = getDateKey(r, wRows);
+            const wastType = String(r['Wastage Type']||'').trim();
+            const seg = /pencil/i.test(wastType) ? 'Pencil' : defaultSeg;
+            wastCols.forEach(c => {
+              const v = parseFloat(String(r[c]||'0').replace(/,/g,''));
+              if (!isNaN(v) && v > 0) result.push({ date: dk, segment: seg, type: wastType||c, qty: v });
+            });
+          });
+          return result;
+        }
+
         const wastageDetail = [
           ...extractWastageDetail(rabdiWastageRows, 'Rabdi'),
           ...extractWastageDetail(milkyWastageRows, 'Milky Cube'),
         ].sort((a,b)=>b.date.localeCompare(a.date)||a.segment.localeCompare(b.segment)||a.type.localeCompare(b.type));
 
-        function shortWLabel(col) {
-          return col.replace(/machine\s*wastage/gi,'Machine').replace(/\bwastage\b/gi,'').replace(/\bwaste\b/gi,'').replace(/^\s*[-–]\s*/,'').trim()||col;
-        }
-
-        // Segment totals for production
-        const prodSegTotals = {};
-        prodDetail.forEach(r => { prodSegTotals[r.segment] = (prodSegTotals[r.segment]||0) + r.qty; });
-
-        // Segment totals for wastage
-        const wastSegTotals = {};
-        wastageDetail.forEach(r => { wastSegTotals[r.segment] = (wastSegTotals[r.segment]||0) + r.qty; });
-
-        const segColors = { 'Rabdi':'var(--accent3)', 'Milky Cube':'var(--accent)', 'Imli':'#a8e063', 'Wafer':'#f7cd5c' };
-
-        // Build rows: interleave data rows with subtotal rows per segment
-        // Group prod by segment
+        // Group both by segment for subtotals
         const prodBySegment = {};
         prodDetail.forEach(r => { (prodBySegment[r.segment]||(prodBySegment[r.segment]=[])).push(r); });
         const wastBySegment = {};
         wastageDetail.forEach(r => { (wastBySegment[r.segment]||(wastBySegment[r.segment]=[])).push(r); });
+        const allSegs = [...new Set([...Object.keys(prodBySegment),...Object.keys(wastBySegment)])].sort();
 
-        const allSegs = [...new Set([...Object.keys(prodBySegment), ...Object.keys(wastBySegment)])].sort();
+        // Date subtotal helper
+        function dateSubtotals(rows) {
+          const map = {};
+          rows.forEach(r => { map[r.date] = (map[r.date]||0) + (r.qty||0); });
+          return map;
+        }
+
+        const prodSegTotals = {};
+        prodDetail.forEach(r=>{ prodSegTotals[r.segment]=(prodSegTotals[r.segment]||0)+r.qty; });
+        const wastSegTotals = {};
+        wastageDetail.forEach(r=>{ wastSegTotals[r.segment]=(wastSegTotals[r.segment]||0)+r.qty; });
 
         let t = `<div class="table-scroll"><table class="trend-table" style="width:100%">
           <thead><tr>
@@ -1512,43 +1522,67 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
         allSegs.forEach(seg => {
           const pRows2 = prodBySegment[seg] || [];
           const wRows2 = wastBySegment[seg] || [];
-          const maxR   = Math.max(pRows2.length, wRows2.length);
           const sc     = segColors[seg] || 'var(--text-muted)';
           const pTotal = prodSegTotals[seg] || 0;
           const wTotal = wastSegTotals[seg] || 0;
 
-          for (let i = 0; i < maxR; i++) {
-            const p = pRows2[i];
-            const w = wRows2[i];
-            t += `<tr>
-              <td style="color:var(--accent)">${p ? fmtDateDisplay(p.date) : ''}</td>
-              <td style="color:${sc}">${p ? p.segment : ''}</td>
-              <td style="color:var(--text)">${p ? p.product : ''}</td>
-              <td style="color:var(--accent2);border-right:2px solid var(--border);font-weight:600">${p ? fmtN(p.qty) : ''}</td>
-              <td style="color:var(--danger)">${w ? fmtDateDisplay(w.date) : ''}</td>
-              <td style="color:${sc}">${w ? w.segment : ''}</td>
-              <td style="color:var(--text)">${w ? shortWLabel(w.type) : ''}</td>
-              <td style="color:var(--danger);font-weight:600">${w ? fmtN(w.qty) : ''}</td>
-            </tr>`;
-          }
+          // Group rows by date within this segment
+          const pByDate = {}, wByDate = {};
+          pRows2.forEach(r => { (pByDate[r.date]||(pByDate[r.date]=[])).push(r); });
+          wRows2.forEach(r => { (wByDate[r.date]||(wByDate[r.date]=[])).push(r); });
+          const segDates = [...new Set([...Object.keys(pByDate),...Object.keys(wByDate)])].sort((a,b)=>b.localeCompare(a));
 
-          // Subtotal row per segment
-          t += `<tr style="background:rgba(255,255,255,.04);border-top:1px solid var(--border);border-bottom:2px solid var(--border)">
-            <td colspan="3" style="color:${sc};font-weight:700;font-size:11px;letter-spacing:.05em">TOTAL — ${seg.toUpperCase()}</td>
+          segDates.forEach(dk => {
+            const pDateRows = pByDate[dk] || [];
+            const wDateRows = wByDate[dk] || [];
+            const maxR = Math.max(pDateRows.length, wDateRows.length);
+
+            // Data rows for this date
+            for (let i = 0; i < maxR; i++) {
+              const p = pDateRows[i];
+              const w = wDateRows[i];
+              t += `<tr>
+                <td style="color:var(--accent)">${p?fmtDateDisplay(p.date):''}</td>
+                <td style="color:${sc}">${p?p.segment:''}</td>
+                <td style="color:var(--text)">${p?p.product:''}</td>
+                <td style="color:var(--accent2);border-right:2px solid var(--border);font-weight:600">${p?fmtN(p.qty):''}</td>
+                <td style="color:var(--danger)">${w?fmtDateDisplay(w.date):''}</td>
+                <td style="color:${sc}">${w?w.segment:''}</td>
+                <td style="color:var(--text)">${w?shortWLabel(w.type):''}</td>
+                <td style="color:var(--danger);font-weight:600">${w?fmtN(w.qty):''}</td>
+              </tr>`;
+            }
+
+            // Subtotal row after each date
+            const pd = pDateRows.reduce((s,r)=>s+r.qty,0);
+            const wd = wDateRows.reduce((s,r)=>s+r.qty,0);
+            t += `<tr style="background:rgba(255,255,255,.04);border-top:1px dashed var(--border)">
+              <td style="color:${sc};font-weight:700;font-size:11px">${fmtDateDisplay(dk)}</td>
+              <td colspan="2" style="color:${sc};font-size:11px;font-weight:600">📅 Date Subtotal — ${seg}</td>
+              <td style="color:var(--accent2);font-weight:700;border-right:2px solid var(--border)">${pd?fmtN(pd):'—'}</td>
+              <td></td>
+              <td colspan="2" style="color:${sc};font-size:11px;font-weight:600">📅 Wastage Subtotal</td>
+              <td style="color:var(--danger);font-weight:700">${wd?fmtN(wd):'—'}</td>
+            </tr>`;
+          });
+
+          // Segment total
+          t += `<tr style="background:rgba(255,255,255,.06);border-top:2px solid var(--border);border-bottom:2px solid var(--border)">
+            <td colspan="3" style="color:${sc};font-weight:700;letter-spacing:.05em">TOTAL — ${seg.toUpperCase()}</td>
             <td style="color:var(--accent2);font-weight:700;border-right:2px solid var(--border)">${fmtN(pTotal)}</td>
-            <td colspan="3" style="color:${sc};font-weight:700;font-size:11px">WASTAGE TOTAL — ${seg.toUpperCase()}</td>
+            <td colspan="3" style="color:${sc};font-weight:700">WASTAGE TOTAL — ${seg.toUpperCase()}</td>
             <td style="color:var(--danger);font-weight:700">${fmtN(wTotal)}</td>
           </tr>`;
         });
 
-        // Grand total row
+        // Grand total
         const grandProd  = Object.values(prodSegTotals).reduce((s,v)=>s+v,0);
-        const grandWaste = Object.values(wastSegTotals).reduce((s,v)=>s+v,0);
+        const grandWaste2 = Object.values(wastSegTotals).reduce((s,v)=>s+v,0);
         t += `<tr style="background:rgba(79,142,247,.06);border-top:2px solid var(--accent)">
           <td colspan="3" style="color:var(--text);font-weight:700">GRAND TOTAL</td>
           <td style="color:var(--accent2);font-weight:700;border-right:2px solid var(--border)">${fmtN(grandProd)}</td>
           <td colspan="3" style="color:var(--text);font-weight:700">GRAND WASTAGE TOTAL</td>
-          <td style="color:var(--danger);font-weight:700">${fmtN(grandWaste)}</td>
+          <td style="color:var(--danger);font-weight:700">${fmtN(grandWaste2)}</td>
         </tr>`;
 
         t += `</tbody></table></div>`;
@@ -1559,9 +1593,16 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
   </div>`;
 
   document.getElementById('content').innerHTML = html;
+  } catch(err) {
+    console.error('renderWastageAnalysis error:', err);
+    document.getElementById('content').innerHTML = `
+      <div class="state-box">
+        <div class="state-icon">⚠️</div>
+        <div class="state-title">Analysis Error</div>
+        <div class="state-sub" style="font-family:monospace;font-size:11px;color:var(--danger);max-width:600px;word-break:break-all">${err.message}</div>
+      </div>`;
+  }
 }
-
-// ── MOBILE SIDEBAR ───────────────────────────────────────────
 function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('open');
   document.getElementById('sidebar-overlay').classList.toggle('open');
