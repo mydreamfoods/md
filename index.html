@@ -157,6 +157,13 @@
   .no-wastage{text-align:center;padding:40px;color:var(--text-dim);font-size:13px;}
   .analysis-note{font-size:11px;color:var(--text-dim);margin-top:14px;padding:10px 12px;background:var(--surface2);border-radius:6px;border-left:3px solid var(--accent);}
 
+  /* ── COLUMN DROPDOWN FILTER ── */
+  th.col-has-filter{padding-bottom:6px;vertical-align:top;}
+  .col-th-inner{display:flex;align-items:center;gap:4px;white-space:nowrap;margin-bottom:5px;}
+  .col-filter-wrap{margin-top:2px;}
+  .col-filter-sel{width:100%;min-width:110px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:11px;padding:4px 6px;font-family:var(--font);cursor:pointer;outline:none;transition:border-color .15s;}
+  .col-filter-sel:focus,.col-filter-sel:hover{border-color:var(--accent);}
+
   ::-webkit-scrollbar{width:5px;height:5px;}
   ::-webkit-scrollbar-track{background:transparent;}
   ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
@@ -563,6 +570,9 @@ const PAGE_SIZE  = 50;
 let filteredRows = [];
 let selectedDates = new Set();
 let dateColName   = null;
+let colFilters    = {};   // { colName: 'value' } — column-level dropdown filters
+let analysisSegFilter  = '';   // Wastage Analysis segment dropdown
+let analysisProdFilter = '';   // Wastage Analysis product dropdown
 
 document.addEventListener('click', e => {
   if (!document.getElementById('date-filter-wrap').contains(e.target))
@@ -687,6 +697,7 @@ function switchTab(name) {
   isAnalysisView = false;
   activeTab = name;
   page = 1; sortCol = null; sortDir = 1;
+  colFilters = {};
   // DON'T clear selectedDates here — persist across tab switches
   document.getElementById('search-box').value = '';
   setActiveNav('nav-' + name);
@@ -798,6 +809,22 @@ function updateDateBadge() {
 }
 
 function applySearch() { page = 1; renderTable(); }
+
+function applyColFilter() {
+  colFilters = {};
+  document.querySelectorAll('.col-filter-sel').forEach(sel => {
+    if (sel.value) colFilters[sel.dataset.col] = sel.value;
+  });
+  page = 1;
+  renderTable();
+  // Restore select values after re-render (renderTable rebuilds DOM)
+  setTimeout(() => {
+    document.querySelectorAll('.col-filter-sel').forEach(sel => {
+      const v = colFilters[sel.dataset.col];
+      if (v) sel.value = v;
+    });
+  }, 0);
+}
 
 // ── KPI ───────────────────────────────────────────────────────
 function renderKPI(rows, cols, sheetName) {
@@ -935,6 +962,15 @@ function renderKPI(rows, cols, sheetName) {
     document.getElementById('kpi-bar').innerHTML = html;
     return;
 
+  } else if (/unload/i.test(sheetName)) {
+    // Unloading KPI: only Total Rows + Qty in Boxes (no Total Qty card, no Driver Number)
+    cards = [{label:'Total Rows', value:rows.length, cls:'accent'}];
+    const qtyBoxCol = cols.find(c => /qty.*box|box.*qty/i.test(c));
+    if (qtyBoxCol) {
+      const sum = rows.reduce((s,r)=>{ const v=parseFloat(String(r[qtyBoxCol]||'0').replace(/,/g,'')); return s+(isNaN(v)?0:v); },0);
+      const d = sum>=1e6?(sum/1e6).toFixed(1)+'M':sum>=1000?(sum/1000).toFixed(1)+'K':sum%1===0?sum:sum.toFixed(1);
+      cards.push({label:'Qty in Boxes', value:d, cls:'green'});
+    }
   } else {
     const skipRe = /timestamp|date|\bdt\b|time|name|supervisor|shift|remark|reason|source|segment|category|[\u0900-\u097F]/i;
     cards = [{label:'Total Rows', value:rows.length, cls:'accent'}];
@@ -1034,7 +1070,13 @@ const COL_RENAME = {
 
 // Columns to hide per sheet (regex on sheet name → array of col regexes)
 const HIDE_COLS = {
-  'guard': [/bill\s*number\s*\/\s*बिल|बिल/i],
+  'guard':  [/bill\s*number\s*\/\s*बिल|बिल/i],
+  'unload': [/total\s*qty|total\s*quantity|total.*qty/i, /driver/i],
+};
+
+// Column-level dropdown search filters — per sheet regex → array of col display-name regexes
+const COL_DROPDOWN_FILTERS = {
+  'unload': [/party|name.*party|party.*name/i, /^material$/i, /^material\s*details/i],
 };
 
 // Match "Material Details", "Material Details 2", "Material Details 3" (GAS dedup format)
@@ -1062,6 +1104,11 @@ function renderTable() {
   }
   const q = document.getElementById('search-box').value.trim().toLowerCase();
   if (q) filtered = filtered.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(q)));
+
+  // 3. Column-level dropdown filters
+  if (Object.keys(colFilters).length) {
+    filtered = filtered.filter(r => Object.entries(colFilters).every(([col, val]) => String(r[col]||'').trim() === val));
+  }
 
   renderKPI(filtered, cols, activeTab);
 
@@ -1224,10 +1271,37 @@ function renderTable() {
     });
     html += `</tr>`;
   } else {
+    // Determine which cols get a dropdown filter for this sheet
+    const colDropRules = Object.entries(COL_DROPDOWN_FILTERS)
+      .filter(([sheetRe]) => new RegExp(sheetRe,'i').test(activeTab))
+      .flatMap(([,res]) => res);
+    function colNeedsDropdown(col) {
+      const disp = colDisplayName(col);
+      return colDropRules.some(re => re.test(disp) || re.test(col));
+    }
+
     html += `<tr>`;
     visibleCols.forEach(col => {
       const cls = sortCol===col?(sortDir===1?'sort-asc':'sort-desc'):'';
-      html += `<th class="${cls}" onclick="onSort('${col.replace(/'/g,"\\'")}'">${colDisplayName(col)}<span class="sort-arrow"></span></th>`;
+      const disp = colDisplayName(col);
+      if (colNeedsDropdown(col)) {
+        // Collect unique values for this col
+        const uniq = [...new Set(filtered.map(r => String(r[col]||'').trim()).filter(Boolean))].sort();
+        const safeCol = col.replace(/'/g,"\\'");
+        const opts = uniq.map(v => `<option value="${v.replace(/"/g,'&quot;')}">${v}</option>`).join('');
+        html += `<th class="${cls} col-has-filter" onclick="onSort('${safeCol}')">
+          <div class="col-th-inner">
+            <span>${disp}</span><span class="sort-arrow"></span>
+          </div>
+          <div class="col-filter-wrap" onclick="event.stopPropagation()">
+            <select class="col-filter-sel" data-col="${safeCol}" onchange="applyColFilter()">
+              <option value="">All</option>${opts}
+            </select>
+          </div>
+        </th>`;
+      } else {
+        html += `<th class="${cls}" onclick="onSort('${col.replace(/'/g,"\\'")}'">${disp}<span class="sort-arrow"></span></th>`;
+      }
     });
     html += `</tr>`;
   }
@@ -1336,6 +1410,8 @@ function switchToWastageAnalysis(fromDateToggle=false) {
   document.getElementById('content').className = '';
   if (!fromDateToggle) {
     document.getElementById('search-box').value = '';
+    analysisSegFilter  = '';
+    analysisProdFilter = '';
     buildDateFilter();
   }
 
@@ -1379,15 +1455,71 @@ function switchToWastageAnalysis(fromDateToggle=false) {
     return;
   }
 
+  const filtRabdi = filterByDates(rabdiRows, targetDates);
+  const filtMilky = filterByDates(milkyRows, targetDates);
+  const filtProd  = filterByDates(prodRows,  targetDates);
+
+  // Build unique segment+product lists for filter dropdowns
+  function classifyProductQ(p,s){
+    const pn=String(p||'').toLowerCase(),sn=String(s||'').toLowerCase();
+    if(/choco.art/i.test(pn)||/pencil/i.test(sn))return 'Pencil';
+    if(/malai/i.test(pn))return'Rabdi';if(/imli/i.test(pn))return'Imli';if(/wafer/i.test(pn))return'Wafer';return'Milky Cube';
+  }
+  const segList  = [...new Set(filtProd.map(r=>classifyProductQ(r['Product'],r['Segment'])).filter(Boolean))].sort();
+
+  // Apply segment filter first, then build product list from segment-filtered rows
+  let aFilteredProd = filtProd;
+  if (analysisSegFilter) aFilteredProd = aFilteredProd.filter(r => classifyProductQ(r['Product'],r['Segment'])===analysisSegFilter);
+
+  // Product list based on currently selected segment (or all if none)
+  const prodList = [...new Set(aFilteredProd.map(r=>String(r['Product']||'').trim()).filter(Boolean))].sort();
+
+  // Apply product filter on top of segment-filtered rows
+  if (analysisProdFilter) aFilteredProd = aFilteredProd.filter(r => String(r['Product']||'').trim()===analysisProdFilter);
+
+  const segSel  = `<select id="ana-seg-sel"  onchange="analysisSegFilter=this.value;analysisProdFilter='';switchToWastageAnalysis(true)" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;font-family:var(--font);cursor:pointer;outline:none;transition:border-color .15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+    <option value="">All Segments</option>
+    ${segList.map(s=>`<option value="${s}"${s===analysisSegFilter?'selected':''}>${s}</option>`).join('')}
+  </select>`;
+  const prodSel = `<select id="ana-prod-sel" onchange="analysisProdFilter=this.value;switchToWastageAnalysis(true)" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;font-family:var(--font);cursor:pointer;outline:none;min-width:180px;transition:border-color .15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+    <option value="">All Products</option>
+    ${prodList.map(p=>`<option value="${p}"${p===analysisProdFilter?'selected':''}>${p}</option>`).join('')}
+  </select>`;
+  const clearBtn = (analysisSegFilter||analysisProdFilter)
+    ? `<button onclick="analysisSegFilter='';analysisProdFilter='';switchToWastageAnalysis(true)" style="background:rgba(240,92,92,.12);border:1px solid rgba(240,92,92,.3);border-radius:6px;padding:6px 12px;color:var(--danger);font-size:12px;cursor:pointer;font-family:var(--font)">✕ Clear</button>`
+    : '';
+
+  // Inject filter bar above analysis content
+  const filterBar = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:0 0 14px 0;">
+    <span style="font-size:12px;color:var(--text-muted);font-weight:600">🔍 Filter:</span>
+    ${segSel}${prodSel}${clearBtn}
+  </div>`;
+
+  // Filter wastage rows by segment
+  let aFilteredRabdi = filtRabdi;
+  let aFilteredMilky = filtMilky;
+  if (analysisSegFilter === 'Rabdi') {
+    aFilteredMilky = [];
+  } else if (analysisSegFilter === 'Milky Cube') {
+    aFilteredRabdi = [];
+  } else if (analysisSegFilter === 'Pencil') {
+    aFilteredRabdi = filtRabdi.filter(r => /pencil/i.test(String(r['Wastage Type']||'')));
+    aFilteredMilky = [];
+  } else if (analysisSegFilter === 'Imli' || analysisSegFilter === 'Wafer') {
+    aFilteredRabdi = [];
+    aFilteredMilky = [];
+  }
+
   renderWastageAnalysis(
-    filterByDates(rabdiRows,  targetDates),
-    filterByDates(milkyRows,  targetDates),
-    filterByDates(prodRows,   targetDates),
-    targetDates.map(d=>fmtDateDisplay(d)).join(', ')
+    aFilteredRabdi,
+    aFilteredMilky,
+    aFilteredProd,
+    targetDates.map(d=>fmtDateDisplay(d)).join(', '),
+    filterBar
   );
 }
 
-function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dateDisplay) {
+function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dateDisplay, filterBar='') {
   try {
 
   function fmtN(v) { return v%1===0 ? v.toLocaleString('en-IN') : v.toFixed(2); }
@@ -1467,6 +1599,7 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
   }
 
   const html = `
+  ${filterBar}
   <div style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
     <span style="font-size:13px;color:var(--text-muted)">📅 Date(s):</span>
     <span style="background:rgba(79,142,247,.12);color:var(--accent);border:1px solid rgba(79,142,247,.3);border-radius:20px;padding:4px 14px;font-size:13px;font-weight:600;">${dateDisplay}</span>
@@ -1561,7 +1694,7 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
         function extractWastageDetail(wRows, defaultSeg) {
           if (!wRows.length) return [];
           const wastCols = Object.keys(wRows[0]).filter(c =>
-            /wastage|waste/i.test(c) && !/timestamp|date|time|reason|remark|photo|note|floor|type/i.test(c)
+            /wastage|waste/i.test(c) && !/timestamp|date|time|reason|remark|photo|note|type/i.test(c)
           );
           const result = [];
           wRows.forEach(r => {
@@ -1570,7 +1703,7 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
             const seg = /pencil/i.test(wastType) ? 'Pencil' : defaultSeg;
             wastCols.forEach(c => {
               const v = parseFloat(String(r[c]||'0').replace(/,/g,''));
-              if (!isNaN(v) && v > 0) result.push({ date: dk, segment: seg, type: wastType||c, qty: v });
+              if (!isNaN(v) && v > 0) result.push({ date: dk, segment: seg, type: wastType||c, col: c, qty: v });
             });
           });
           return result;
@@ -1600,16 +1733,30 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
         const wastSegTotals = {};
         wastageDetail.forEach(r=>{ wastSegTotals[r.segment]=(wastSegTotals[r.segment]||0)+r.qty; });
 
+        // Build unique row-id for expand/collapse
+        const expandedRows = new Set();
+        window._waToggleRow = function(id) {
+          const detailEl = document.getElementById('wa-detail-'+id);
+          const btnEl    = document.getElementById('wa-btn-'+id);
+          if (!detailEl) return;
+          const open = detailEl.style.display !== 'none';
+          detailEl.style.display = open ? 'none' : '';
+          if (btnEl) btnEl.textContent = open ? '▶' : '▼';
+        };
+
         let t = `<div class="table-scroll"><table class="trend-table" style="width:100%">
           <thead><tr>
-            <th colspan="4" style="background:rgba(79,142,247,.08);color:var(--accent);text-align:center;border-right:2px solid var(--border)">📦 PRODUCTION</th>
+            <th style="width:28px"></th>
+            <th colspan="3" style="background:rgba(79,142,247,.08);color:var(--accent);text-align:center;border-right:2px solid var(--border)">📦 PRODUCTION</th>
             <th colspan="4" style="background:rgba(240,92,92,.08);color:var(--danger);text-align:center">⚠️ WASTAGE</th>
           </tr><tr>
-            <th>Date</th><th>Segment</th><th>Product</th>
+            <th></th>
+            <th>Date</th><th>Segment</th>
             <th style="border-right:2px solid var(--border)">Qty</th>
-            <th>Date</th><th>Segment</th><th>Wastage Type</th><th>Qty</th>
+            <th>Date</th><th>Segment</th><th>Qty</th><th>Wastage %</th>
           </tr></thead><tbody>`;
 
+        let rowIdx = 0;
         allSegs.forEach(seg => {
           const pRows2 = prodBySegment[seg] || [];
           const wRows2 = wastBySegment[seg] || [];
@@ -1626,54 +1773,77 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
           segDates.forEach(dk => {
             const pDateRows = pByDate[dk] || [];
             const wDateRows = wByDate[dk] || [];
-            const maxR = Math.max(pDateRows.length, wDateRows.length);
+            const pd = pDateRows.reduce((s,r)=>s+r.qty,0);
+            const wd = wDateRows.reduce((s,r)=>s+r.qty,0);
+            const rid = 'r'+(rowIdx++);
 
-            // Data rows for this date
+            // ── SUBTOTAL ROW (collapsed by default) ──
+            const wPct = pd > 0 ? ((wd/pd)*100) : null;
+            const wPctStr = wPct !== null ? wPct.toFixed(1)+'%' : '—';
+            const wPctColor = wPct === null ? 'var(--text-muted)' : wPct > 5 ? 'var(--danger)' : 'var(--accent3)';
+            t += `<tr style="background:rgba(255,255,255,.04);cursor:pointer" onclick="window._waToggleRow('${rid}')">
+              <td style="text-align:center;color:${sc};font-weight:700;font-size:13px;padding:0 4px" id="wa-btn-${rid}">▶</td>
+              <td style="color:var(--accent);font-weight:700">${fmtDateDisplay(dk)}</td>
+              <td style="color:${sc};font-weight:600">${seg}</td>
+              <td style="color:var(--accent2);font-weight:700;border-right:2px solid var(--border)">${pd?fmtN(pd):'—'}</td>
+              <td style="color:var(--danger)">${fmtDateDisplay(dk)}</td>
+              <td style="color:${sc};font-weight:600">${seg}</td>
+              <td style="color:var(--danger);font-weight:700">${wd?fmtN(wd):'—'}</td>
+              <td style="color:${wPctColor};font-weight:700">${wPctStr}</td>
+            </tr>`;
+
+            // ── DETAIL ROWS (hidden by default) ──
+            // Header cols: [toggle] | Date | Segment | Qty(prod) || Date | Segment | Qty(wast)
+            // Detail  cols: [empty] | ↳    | Product  | Qty(prod) ||  ↳   | WastageColLabel | Qty(wast)
+            const maxR = Math.max(pDateRows.length, wDateRows.length, 1);
+            let detailHtml = '';
             for (let i = 0; i < maxR; i++) {
               const p = pDateRows[i];
               const w = wDateRows[i];
-              t += `<tr>
-                <td style="color:var(--accent)">${p?fmtDateDisplay(p.date):''}</td>
-                <td style="color:${sc}">${p?p.segment:''}</td>
+              // w.col = actual wastage column name (Machine Wastage, Floor Wastage etc.)
+              // w.type = Wastage Type value (RABDI / PENCIL)
+              const wLabel = w ? (w.col ? shortWLabel(w.col) : shortWLabel(w.type)) : '';
+              detailHtml += `<tr style="background:rgba(0,0,0,.18);font-size:12px">
+                <td></td>
+                <td style="color:var(--text-muted);padding-left:18px">${p?'↳':''}</td>
                 <td style="color:var(--text)">${p?p.product:''}</td>
-                <td style="color:var(--accent2);border-right:2px solid var(--border);font-weight:600">${p?fmtN(p.qty):''}</td>
-                <td style="color:var(--danger)">${w?fmtDateDisplay(w.date):''}</td>
-                <td style="color:${sc}">${w?w.segment:''}</td>
-                <td style="color:var(--text)">${w?shortWLabel(w.type):''}</td>
-                <td style="color:var(--danger);font-weight:600">${w?fmtN(w.qty):''}</td>
+                <td style="color:var(--accent2);border-right:2px solid var(--border)">${p?fmtN(p.qty):''}</td>
+                <td style="color:var(--text-muted)">${w?'↳':''}</td>
+                <td style="color:var(--text)">${wLabel}</td>
+                <td style="color:var(--danger)">${w?fmtN(w.qty):''}</td>
+                <td></td>
               </tr>`;
             }
-
-            // Subtotal row after each date
-            const pd = pDateRows.reduce((s,r)=>s+r.qty,0);
-            const wd = wDateRows.reduce((s,r)=>s+r.qty,0);
-            t += `<tr style="background:rgba(255,255,255,.04);border-top:1px dashed var(--border)">
-              <td style="color:${sc};font-weight:700;font-size:11px">${fmtDateDisplay(dk)}</td>
-              <td colspan="2" style="color:${sc};font-size:11px;font-weight:600">📅 Date Subtotal — ${seg}</td>
-              <td style="color:var(--accent2);font-weight:700;border-right:2px solid var(--border)">${pd?fmtN(pd):'—'}</td>
-              <td></td>
-              <td colspan="2" style="color:${sc};font-size:11px;font-weight:600">📅 Wastage Subtotal</td>
-              <td style="color:var(--danger);font-weight:700">${wd?fmtN(wd):'—'}</td>
-            </tr>`;
+            t += `<tbody id="wa-detail-${rid}" style="display:none">${detailHtml}</tbody>`;
           });
 
           // Segment total
+          const segWPct = pTotal > 0 ? ((wTotal/pTotal)*100) : null;
+          const segWPctStr = segWPct !== null ? segWPct.toFixed(1)+'%' : '—';
+          const segWPctColor = segWPct === null ? 'var(--text-muted)' : segWPct > 5 ? 'var(--danger)' : 'var(--accent3)';
           t += `<tr style="background:rgba(255,255,255,.06);border-top:2px solid var(--border);border-bottom:2px solid var(--border)">
-            <td colspan="3" style="color:${sc};font-weight:700;letter-spacing:.05em">TOTAL — ${seg.toUpperCase()}</td>
+            <td></td>
+            <td colspan="2" style="color:${sc};font-weight:700;letter-spacing:.05em">TOTAL — ${seg.toUpperCase()}</td>
             <td style="color:var(--accent2);font-weight:700;border-right:2px solid var(--border)">${fmtN(pTotal)}</td>
-            <td colspan="3" style="color:${sc};font-weight:700">WASTAGE TOTAL — ${seg.toUpperCase()}</td>
+            <td colspan="2" style="color:${sc};font-weight:700">WASTAGE TOTAL — ${seg.toUpperCase()}</td>
             <td style="color:var(--danger);font-weight:700">${fmtN(wTotal)}</td>
+            <td style="color:${segWPctColor};font-weight:700">${segWPctStr}</td>
           </tr>`;
         });
 
         // Grand total
         const grandProd  = Object.values(prodSegTotals).reduce((s,v)=>s+v,0);
         const grandWaste2 = Object.values(wastSegTotals).reduce((s,v)=>s+v,0);
+        const grandWPct = grandProd > 0 ? ((grandWaste2/grandProd)*100) : null;
+        const grandWPctStr = grandWPct !== null ? grandWPct.toFixed(1)+'%' : '—';
+        const grandWPctColor = grandWPct === null ? 'var(--text-muted)' : grandWPct > 5 ? 'var(--danger)' : 'var(--accent3)';
         t += `<tr style="background:rgba(79,142,247,.06);border-top:2px solid var(--accent)">
-          <td colspan="3" style="color:var(--text);font-weight:700">GRAND TOTAL</td>
+          <td></td>
+          <td colspan="2" style="color:var(--text);font-weight:700">GRAND TOTAL</td>
           <td style="color:var(--accent2);font-weight:700;border-right:2px solid var(--border)">${fmtN(grandProd)}</td>
-          <td colspan="3" style="color:var(--text);font-weight:700">GRAND WASTAGE TOTAL</td>
+          <td colspan="2" style="color:var(--text);font-weight:700">GRAND WASTAGE TOTAL</td>
           <td style="color:var(--danger);font-weight:700">${fmtN(grandWaste2)}</td>
+          <td style="color:${grandWPctColor};font-weight:700">${grandWPctStr}</td>
         </tr>`;
 
         t += `</tbody></table></div>`;
