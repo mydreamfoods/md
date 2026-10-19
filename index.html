@@ -1580,10 +1580,153 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
     return 'milky';
   }
 
+  // Hardcoded product weights from Products sheet (Order Sheet 2026, as of Oct 2026)
+  // These are used as fallback if the live Products tab is not loaded via GAS
+  const STATIC_PRODUCT_WEIGHTS = {
+    'Butter Soft 125 pcs x 24 container': 15,
+    'Choco Art 30 pcs x 24 box': 15,
+    'Coffee cube 125 pcs x 36 box': 15,
+    'Dark cube 125 pcs x 36 box': 15,
+    'Dinner Time 30 pcs x 24 box': 15,
+    'Jungle Jack 30 pcs x 18 box': 15,
+    'Kings 125 pcs x 24 container': 15,
+    'Milky Cube 250 pcs x 16 Bucket': 15,
+    'Milky Cube Birthday Special 35 pcs x 24 container': 15,
+    'Milky Cube Classic 125 pcs x 36 box': 15,
+    'Milky Cube Classic 35 pcs x 24 container': 15,
+    'Milky Cube Classic 40 pcs x 24 container': 15,
+    'Milky Cube Kesar 35 pcs x 24 container': 15,
+    'Milky Cube Pouch 125 pcs x 36 box': 15,
+    'Milky Cube Rose 35 pcs x 24 container': 15,
+    'Rosy Cube 125 pcs x 24 container': 15,
+    'Rosy Cube 125 pcs x 36 box': 15,
+    'Zinga Imli 100 pcs x 24 jar': 15,
+    'Zinga Imli 60 pcs x 40 pkt': 15,
+    'Cuties 30 pcs x 24 box': 15,
+    'Donut 30 pcs x 24 jar': 15,
+    'Eddy Teddy Maxi 30 pcs x 24 box': 15,
+    'Fruzy Assorted 175 pcs x 24 container': 15,
+    'Fruzy Assorted 30 pcs x 20 box': 15,
+    'Fruzy Assorted 35 pcs x 16 container': 15,
+    'Fruzy Guava 175 pcs x 24 container': 15,
+    'Fruzy Lichi 175 pcs x 24 container': 15,
+    'Fruzy Mango 175 pcs x 24 container': 15,
+    'Fruzy Sour Candy 30 pcs x 24 box': 15,
+    'Fruzy Strawberry 175 pcs x 24 container': 15,
+    'Fun 5 30 pcs x 18 box': 15,
+    'Happy Treat 30 pcs x 24 box': 15,
+    'ICE Cone 150pcs x 30 box': 15,
+    'Teddy Boy 150pcs x 30 box': 15,
+    'Jelly Assorted 150 pcs x 24 jar': 15,
+    'Mix Jelly Assorted 150 pcs x 24 container': 15,
+    'Jelly Assorted 85 pcs x 32 box': 15,
+    'Jelly Assorted 85 pcs x 40 box': 15,
+    'Jelly Green Apple 85 pcs x 40 box': 15,
+    'Jelly Guava 150 pcs x 24 jar': 15,
+    'Jelly Guava 85 pcs x 40 box': 15,
+    'Jelly Imli 150 pcs x 24 jar': 15,
+    'Jelly Imli 85 pcs x 40 box': 15,
+    'Jelly Kharbuza 85 pcs x 40 box': 15,
+    'Jelly Lychee 150 pcs x 24 jar': 15,
+    'Jelly Lychee 85 pcs x 40 box': 15,
+    'Jelly Mango 150 pcs x 24 jar': 15,
+    'Jelly Mango 85 pcs x 40 box': 15,
+    'Jelly Orange 85 pcs x 40 box': 15,
+    'Jelly Paan 85 pcs x 40 box': 15,
+    'Jelly Strawberry 150 pcs x 24 jar': 15,
+    'Jelly Strawberry 85 pcs x 40 box': 15,
+    'Monkeyzz Guava 30 pcs x 24 box': 15,
+    'Monkeyzz Mango 30 pcs x 24 box': 15,
+    'Monster 30 pcs x 24 box': 15,
+    'Ninja Turtles 30 pcs x 24 jar': 15,
+    'Choky Chocolate Cream 100 pcs x 36 jar': 15,
+    'Choky Chocolate Cream 40 pcs x 24 box': 15,
+    'Choky Chocolate Cream 40 pcs x 24 container': 15,
+    'Malai Mithai 60 pcs x 60 pkt': 10.8,
+    'Milky Malai Mithai Mango 100 pcs x 36 jar': 10.8,
+    'Milky Malai Mithai Rabdi 100 pcs x 24 jar': 7.2,
+    'Milky Malai Mithai Rabdi 100 pcs x 36 jar': 10.8,
+    'Milky Malai Mithai Rabdi 150 pcs x 24 container': 15,
+    'Milky Malai Mithai Rose 100 pcs x 36 jar': 10.8,
+    'Milky Malai Rabdi 40 pcs x 24 box': 15,
+    'Milky Malai Rabdi 40 pcs x 24 container': 15,
+    'Biggy Jar Banana 40 pcs x 15 jar': 15,
+    'Biggy Jar Orange 40 pcs x 15 jar': 15,
+    'Biggy Jar Strawberry 40 pcs x 15 jar': 15,
+    'Mix Biggy 40 pcs x 15 jar': 15,
+    'Mix Wafer 60 pcs x 28 box': 15,
+    'Wafer 35 pcs x 28 box': 15,
+    'Wafer Assorted 40 pcs x 18 jar': 15,
+    'Wafer Banana 40 pcs x 18 jar': 15,
+    'Wafer Chocolate 40 pcs x 18 jar': 15,
+    'Wafer Creamy Stix Roll Orange 60 pcs x 24 box': 15,
+    'Wafer Creamy Stix Roll Strawberry 60 pcs x 24 box': 15,
+    'Wafer Creamy Stix Roll Vanilla 60 pcs x 24 box': 15,
+    'Wafer Mango 60 pcs x 28 box': 15,
+    'Wafer Orange 40 pcs x 18 jar': 15,
+    'Wafer Orange 60 pcs x 28 box': 15,
+    'Wafer Strawberry 40 pcs x 18 jar': 15,
+    'Wafer Strawberry 60 pcs x 28 box': 15,
+    'Wafer Vanila 60 pcs x 28 box': 15,
+    'Cream-O 48 pcs x 24 box': 15,
+    'Cremelol 48 pcs x 24 box': 15,
+    'Kreamy Choc Dy 100 pcs x 12 jar': 15,
+    'Kreamy Choc Dy 200 pcs x 12 jar': 15,
+    'Kreamy Chocolate 50 pcs x 24 pkt': 15,
+    'Likme Strawberry Paste 60 pcs x 50 pkt': 15,
+    'Rama Choco & Splash 48 pcs x 12 box': 15,
+    'Rama Choco & Splash 48 pcs x 24 box': 15,
+    'Veto Pure Stik Chocolate Paste 60 pcs x 50 pkt': 15,
+    'Veto Pure Stik Milk Paste 60 pcs x 50 pkt': 15,
+    'Fruzy Veto 30 pcs x 12 box': 15,
+    'Biggy oero 40 pcs x 15 jar': 15,
+    'Mix Biggy oero 40 pcs x 15 jar': 15,
+    'Banana Sip 50 pcs x 20 box': 15,
+    'Milky Sip 50 pcs x 20 box': 15,
+    'Choco Sip 50 pcs x 20 box': 15,
+    'Choco Sip 100 pcs x 12 Jar': 15,
+    'Mama Yummie Banana Paste 50 pcs x 24 box': 15,
+    'Mama Yummie Chocolate Paste 50 pcs x 24 box': 15,
+    'Mama Yummie Milky Paste 50 pcs x 24 box': 15,
+    'Mama Yummie Strawberry Paste 50 pcs x 24 box': 15,
+    'Strawberry Sip 50 pcs x 20 box': 15,
+    'Loose Milky Cube': 15,
+    'Loose Donut': 15,
+    'Loose Ninja': 15,
+    'Miss Jolly Assorted 650 pcs x 4 bucket': 15,
+    'Sample': 15,
+    'Jelly Assorted 60 pcs x 40 box': 15,
+    'Jelly Green Apple 60 pcs x 40 box': 15,
+    'Jelly Guava 60 pcs x 40 box': 15,
+    'Jelly Imli 60 pcs x 40 box': 15,
+    'Jelly Kharbuza 60 pcs x 40 box': 15,
+    'Jelly Lychee 60 pcs x 40 box': 15,
+    'Jelly Mango 60 pcs x 40 box': 15,
+    'Jelly Orange 60 pcs x 40 box': 15,
+    'Jelly Paan 60 pcs x 40 box': 15,
+    'Jelly Strawberry 60 pcs x 40 box': 15,
+  };
+
+  // Build per-product weight map — prefers live Products sheet, falls back to hardcoded map
+  const weightMap = (() => {
+    const map = {...STATIC_PRODUCT_WEIGHTS};
+    const prodSheet = allData['Products'] || [];
+    prodSheet.forEach(r => {
+      const name = String(r['Product Name']||'').trim();
+      const w = parseFloat(String(r['Weight (in KG)']||'0').replace(/,/g,''));
+      if (name && !isNaN(w) && w > 0) map[name] = w; // live data overrides static
+    });
+    return map;
+  })();
+  function getWeight(productName) {
+    const name = String(productName||'').trim();
+    return weightMap[name] || 15; // final fallback 15 kg for unknown products
+  }
   function sumQty(rows) {
     return rows.reduce((s,r) => {
       const v = parseFloat(String(r['Quantity']||r['quantity']||r['QTY']||'0').replace(/,/g,''));
-      return s + (isNaN(v)?0:v);
+      const w = getWeight(r['Product']);
+      return s + (isNaN(v)?0:v*w);
     }, 0);
   }
 
@@ -1630,11 +1773,11 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
       <h3>${emoji} ${label}</h3>
       <div class="stat-row">
         <span class="stat-label">Production</span>
-        <span class="stat-val green">${fmtN(prodQty)}</span>
+        <span class="stat-val green">${fmtN(prodQty)} <small style="font-size:10px;opacity:0.7">kg</small></span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Wastage</span>
-        <span class="stat-val ${valClass}">${fmtN(wastageQty)}</span>
+        <span class="stat-val ${valClass}">${fmtN(wastageQty)} <small style="font-size:10px;opacity:0.7">kg</small></span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Wastage %</span>
@@ -1653,30 +1796,30 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
   <div style="display:grid;grid-template-columns:repeat(${prodPencilQty>0||pencilWastageTotal>0?5:4},1fr);gap:12px;margin-bottom:16px;">
     <div class="analysis-card" style="margin:0">
       <h3>📋 Overall Summary</h3>
-      <div class="stat-row"><span class="stat-label">Total Production</span><span class="stat-val green">${fmtN(prodTotal)}</span></div>
-      <div class="stat-row"><span class="stat-label">Total Wastage</span><span class="stat-val red">${fmtN(grandWastage)}</span></div>
+      <div class="stat-row"><span class="stat-label">Total Production</span><span class="stat-val green">${fmtN(prodTotal)} <small style="font-size:10px;opacity:0.7">kg</small></span></div>
+      <div class="stat-row"><span class="stat-label">Total Wastage</span><span class="stat-val red">${fmtN(grandWastage)} <small style="font-size:10px;opacity:0.7">kg</small></span></div>
       <div class="stat-row"><span class="stat-label">Wastage %</span><span class="stat-val ${prodTotal>0&&(grandWastage/prodTotal*100)>5?'red':'orange'}">${prodTotal>0?((grandWastage/prodTotal)*100).toFixed(1)+'%':'—'}</span></div>
-      <div class="stat-row"><span class="stat-label">Rabdi Wastage</span><span class="stat-val orange">${fmtN(rabdiWastageTotal)}</span></div>
-      <div class="stat-row"><span class="stat-label">Milky Cube Wastage</span><span class="stat-val accent">${fmtN(milkyWastageTotal)}</span></div>
-      <div class="stat-row"><span class="stat-label">Pencil Wastage</span><span class="stat-val" style="color:#9b87f5">${fmtN(pencilWastageTotal)}</span></div>
-      ${paperWastage>0?`<div class="stat-row"><span class="stat-label">🗞️ Paper Wastage</span><span class="stat-val green">${fmtN(paperWastage)}</span></div>`:''}
+      <div class="stat-row"><span class="stat-label">Rabdi Wastage</span><span class="stat-val orange">${fmtN(rabdiWastageTotal)} <small style="font-size:10px;opacity:0.7">kg</small></span></div>
+      <div class="stat-row"><span class="stat-label">Milky Cube Wastage</span><span class="stat-val accent">${fmtN(milkyWastageTotal)} <small style="font-size:10px;opacity:0.7">kg</small></span></div>
+      <div class="stat-row"><span class="stat-label">Pencil Wastage</span><span class="stat-val" style="color:#9b87f5">${fmtN(pencilWastageTotal)} <small style="font-size:10px;opacity:0.7">kg</small></span></div>
+      ${paperWastage>0?`<div class="stat-row"><span class="stat-label">🗞️ Paper Wastage</span><span class="stat-val green">${fmtN(paperWastage)} <small style="font-size:10px;opacity:0.7">kg</small></span></div>`:''}
     </div>
     <div class="analysis-card" style="margin:0">
       <h3>🍫 Milky Cube</h3>
-      <div class="stat-row"><span class="stat-label">Production</span><span class="stat-val green">${fmtN(prodMilkyQty)}</span></div>
-      <div class="stat-row"><span class="stat-label">Wastage</span><span class="stat-val accent">${fmtN(milkyWastageTotal)}</span></div>
+      <div class="stat-row"><span class="stat-label">Production</span><span class="stat-val green">${fmtN(prodMilkyQty)} <small style="font-size:10px;opacity:0.7">kg</small></span></div>
+      <div class="stat-row"><span class="stat-label">Wastage</span><span class="stat-val accent">${fmtN(milkyWastageTotal)} <small style="font-size:10px;opacity:0.7">kg</small></span></div>
       <div class="stat-row"><span class="stat-label">Wastage %</span><span class="stat-val ${prodMilkyQty>0&&(milkyWastageTotal/prodMilkyQty*100)>5?'red':'orange'}">${prodMilkyQty>0?((milkyWastageTotal/prodMilkyQty)*100).toFixed(1)+'%':'—'}</span></div>
     </div>
     <div class="analysis-card" style="margin:0">
       <h3>🥛 Rabdi</h3>
-      <div class="stat-row"><span class="stat-label">Production</span><span class="stat-val green">${fmtN(prodRabdiQty)}</span></div>
-      <div class="stat-row"><span class="stat-label">Wastage</span><span class="stat-val orange">${fmtN(rabdiWastageTotal)}</span></div>
+      <div class="stat-row"><span class="stat-label">Production</span><span class="stat-val green">${fmtN(prodRabdiQty)} <small style="font-size:10px;opacity:0.7">kg</small></span></div>
+      <div class="stat-row"><span class="stat-label">Wastage</span><span class="stat-val orange">${fmtN(rabdiWastageTotal)} <small style="font-size:10px;opacity:0.7">kg</small></span></div>
       <div class="stat-row"><span class="stat-label">Wastage %</span><span class="stat-val ${prodRabdiQty>0&&(rabdiWastageTotal/prodRabdiQty*100)>5?'red':'orange'}">${prodRabdiQty>0?((rabdiWastageTotal/prodRabdiQty)*100).toFixed(1)+'%':'—'}</span></div>
     </div>
     ${prodPencilQty>0||pencilWastageTotal>0?`<div class="analysis-card" style="margin:0">
       <h3>✏️ Pencil</h3>
-      <div class="stat-row"><span class="stat-label">Production</span><span class="stat-val green">${fmtN(prodPencilQty)}</span></div>
-      <div class="stat-row"><span class="stat-label">Wastage</span><span class="stat-val" style="color:#9b87f5">${fmtN(pencilWastageTotal)}</span></div>
+      <div class="stat-row"><span class="stat-label">Production</span><span class="stat-val green">${fmtN(prodPencilQty)} <small style="font-size:10px;opacity:0.7">kg</small></span></div>
+      <div class="stat-row"><span class="stat-label">Wastage</span><span class="stat-val" style="color:#9b87f5">${fmtN(pencilWastageTotal)} <small style="font-size:10px;opacity:0.7">kg</small></span></div>
       <div class="stat-row"><span class="stat-label">Wastage %</span><span class="stat-val ${prodPencilQty>0&&(pencilWastageTotal/prodPencilQty*100)>5?'red':'orange'}">${prodPencilQty>0?((pencilWastageTotal/prodPencilQty)*100).toFixed(1)+'%':'—'}</span></div>
     </div>`:''}
     <div class="analysis-card" style="margin:0">
@@ -1703,11 +1846,15 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
         const segMap = { rabdi:'Rabdi', imli:'Imli', wafer:'Wafer', milky:'Milky Cube', pencil:'Pencil' };
         const prodDetail = prodRows.map(r => {
           const cls = classifyProduct(r['Product'], r['Segment']);
+          const cartQty = parseFloat(String(r['Quantity']||'0').replace(/,/g,''))||0;
+          const prodWeight = getWeight(r['Product']);
           return {
             date: getDateKey(r, prodRows),
             segment: segMap[cls]||cls,
             product: String(r['Product']||'').trim(),
-            qty: parseFloat(String(r['Quantity']||'0').replace(/,/g,''))||0,
+            cartQty,
+            prodWeight,
+            qty: cartQty * prodWeight,
             cls,
           };
         }).filter(r=>r.date).sort((a,b)=>b.date.localeCompare(a.date)||a.segment.localeCompare(b.segment)||a.product.localeCompare(b.product));
@@ -1792,13 +1939,13 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
         let t = `<div class="table-scroll"><table class="trend-table" style="width:100%">
           <thead><tr>
             <th style="width:28px"></th>
-            <th colspan="3" style="background:rgba(79,142,247,.08);color:var(--accent);text-align:center;border-right:2px solid var(--border)">📦 PRODUCTION</th>
+            <th colspan="5" style="background:rgba(79,142,247,.08);color:var(--accent);text-align:center;border-right:2px solid var(--border)">📦 PRODUCTION</th>
             <th colspan="4" style="background:rgba(240,92,92,.08);color:var(--danger);text-align:center">⚠️ WASTAGE</th>
           </tr><tr>
             <th></th>
-            <th>Date</th><th>Segment</th>
-            <th style="border-right:2px solid var(--border)">Qty</th>
-            <th>Date</th><th>Segment</th><th>Qty</th><th>Wastage %</th>
+            <th>Date</th><th>Segment</th><th>Qty (cartons)</th><th>Prod. Weight</th>
+            <th style="border-right:2px solid var(--border)">Weight (kg)</th>
+            <th>Date</th><th>Segment</th><th>Qty (kg)</th><th>Wastage %</th>
           </tr></thead><tbody>`;
 
         let rowIdx = 0;
@@ -1826,14 +1973,17 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
             const wPct = pd > 0 ? ((wd/pd)*100) : null;
             const wPctStr = wPct !== null ? wPct.toFixed(1)+'%' : '—';
             const wPctColor = wPct === null ? 'var(--text-muted)' : wPct > 5 ? 'var(--danger)' : 'var(--accent3)';
+            const pdCart = pDateRows.reduce((s,r)=>s+(r.cartQty||0),0);
             t += `<tr style="background:rgba(255,255,255,.04);cursor:pointer" onclick="window._waToggleRow('${rid}')">
               <td style="text-align:center;color:${sc};font-weight:700;font-size:13px;padding:0 4px" id="wa-btn-${rid}">▶</td>
               <td style="color:var(--accent);font-weight:700">${fmtDateDisplay(dk)}</td>
               <td style="color:${sc};font-weight:600">${seg}</td>
-              <td style="color:var(--accent2);font-weight:700;border-right:2px solid var(--border)">${pd?fmtN(pd):'—'}</td>
+              <td style="color:var(--text-muted);font-weight:600">${pdCart?fmtN(pdCart)+' <small style="font-size:10px;opacity:0.6;font-weight:400">ctn</small>':'—'}</td>
+              <td style="color:var(--text-dim);font-weight:500">—</td>
+              <td style="color:var(--accent2);font-weight:700;border-right:2px solid var(--border)">${pd?fmtN(pd)+' <small style="font-size:10px;opacity:0.6;font-weight:400">kg</small>':'—'}</td>
               <td style="color:var(--danger)">${fmtDateDisplay(dk)}</td>
               <td style="color:${sc};font-weight:600">${seg}</td>
-              <td style="color:var(--danger);font-weight:700">${wd?fmtN(wd):'—'}</td>
+              <td style="color:var(--danger);font-weight:700">${wd?fmtN(wd)+' <small style="font-size:10px;opacity:0.6;font-weight:400">kg</small>':'—'}</td>
               <td style="color:${wPctColor};font-weight:700">${wPctStr}</td>
             </tr>`;
 
@@ -1852,10 +2002,12 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
                 <td></td>
                 <td style="color:var(--text-muted);padding-left:18px">${p?'↳':''}</td>
                 <td style="color:var(--text)">${p?p.product:''}</td>
-                <td style="color:var(--accent2);border-right:2px solid var(--border)">${p?fmtN(p.qty):''}</td>
+                <td style="color:var(--text-muted)">${p?(p.cartQty||0)+' <small style="font-size:10px;opacity:0.6">ctn</small>':''}</td>
+                <td style="color:var(--text-dim);font-size:11px">${p?fmtN(p.prodWeight)+' <small style="font-size:10px;opacity:0.6">kg/ctn</small>':''}</td>
+                <td style="color:var(--accent2);border-right:2px solid var(--border)">${p?fmtN(p.qty)+' <small style="font-size:10px;opacity:0.6">kg</small>':''}</td>
                 <td style="color:var(--text-muted)">${w?'↳':''}</td>
                 <td style="color:var(--text)">${wLabel}</td>
-                <td style="color:var(--danger)">${w?fmtN(w.qty):''}</td>
+                <td style="color:var(--danger)">${w?fmtN(w.qty)+' <small style="font-size:10px;opacity:0.6">kg</small>':''}</td>
                 <td></td>
               </tr>`;
             }
@@ -1866,12 +2018,15 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
           const segWPct = pTotal > 0 ? ((wTotal/pTotal)*100) : null;
           const segWPctStr = segWPct !== null ? segWPct.toFixed(1)+'%' : '—';
           const segWPctColor = segWPct === null ? 'var(--text-muted)' : segWPct > 5 ? 'var(--danger)' : 'var(--accent3)';
+          const pTotalCart = (prodBySegment[seg]||[]).reduce((s,r)=>s+(r.cartQty||0),0);
           t += `<tr style="background:rgba(255,255,255,.06);border-top:2px solid var(--border);border-bottom:2px solid var(--border)">
             <td></td>
             <td colspan="2" style="color:${sc};font-weight:700;letter-spacing:.05em">TOTAL — ${seg.toUpperCase()}</td>
-            <td style="color:var(--accent2);font-weight:700;border-right:2px solid var(--border)">${fmtN(pTotal)}</td>
+            <td style="color:var(--text-muted);font-weight:700">${pTotalCart} <small style="font-size:10px;opacity:0.6;font-weight:400">ctn</small></td>
+            <td></td>
+            <td style="color:var(--accent2);font-weight:700;border-right:2px solid var(--border)">${fmtN(pTotal)} <small style="font-size:10px;opacity:0.6;font-weight:400">kg</small></td>
             <td colspan="2" style="color:${sc};font-weight:700">WASTAGE TOTAL — ${seg.toUpperCase()}</td>
-            <td style="color:var(--danger);font-weight:700">${fmtN(wTotal)}</td>
+            <td style="color:var(--danger);font-weight:700">${fmtN(wTotal)} <small style="font-size:10px;opacity:0.6;font-weight:400">kg</small></td>
             <td style="color:${segWPctColor};font-weight:700">${segWPctStr}</td>
           </tr>`;
         });
@@ -1882,12 +2037,15 @@ function renderWastageAnalysis(rabdiWastageRows, milkyWastageRows, prodRows, dat
         const grandWPct = grandProd > 0 ? ((grandWaste2/grandProd)*100) : null;
         const grandWPctStr = grandWPct !== null ? grandWPct.toFixed(1)+'%' : '—';
         const grandWPctColor = grandWPct === null ? 'var(--text-muted)' : grandWPct > 5 ? 'var(--danger)' : 'var(--accent3)';
+        const grandProdCart = prodDetail.reduce((s,r)=>s+(r.cartQty||0),0);
         t += `<tr style="background:rgba(79,142,247,.06);border-top:2px solid var(--accent)">
           <td></td>
           <td colspan="2" style="color:var(--text);font-weight:700">GRAND TOTAL</td>
-          <td style="color:var(--accent2);font-weight:700;border-right:2px solid var(--border)">${fmtN(grandProd)}</td>
+          <td style="color:var(--text-muted);font-weight:700">${grandProdCart} <small style="font-size:10px;opacity:0.6;font-weight:400">ctn</small></td>
+          <td></td>
+          <td style="color:var(--accent2);font-weight:700;border-right:2px solid var(--border)">${fmtN(grandProd)} <small style="font-size:10px;opacity:0.6;font-weight:400">kg</small></td>
           <td colspan="2" style="color:var(--text);font-weight:700">GRAND WASTAGE TOTAL</td>
-          <td style="color:var(--danger);font-weight:700">${fmtN(grandWaste2)}</td>
+          <td style="color:var(--danger);font-weight:700">${fmtN(grandWaste2)} <small style="font-size:10px;opacity:0.6;font-weight:400">kg</small></td>
           <td style="color:${grandWPctColor};font-weight:700">${grandWPctStr}</td>
         </tr>`;
 
