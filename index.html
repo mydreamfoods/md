@@ -15,6 +15,14 @@
     --sidebar-w:220px;
     --tbl-font:13px;
   }
+  /* ── THEMES ── */
+  [data-theme="light"]{--bg:#f0f2f7;--surface:#ffffff;--surface2:#e8eaf0;--border:#d0d4e0;--accent:#2563eb;--accent2:#059669;--accent3:#d97706;--text:#1a1d2e;--text-muted:#5b6080;--text-dim:#9ba3c0;--danger:#dc2626;}
+  [data-theme="navy"]{--bg:#0d1b2e;--surface:#112240;--surface2:#1a3355;--border:#1e3a5f;--accent:#64b5f6;--accent2:#ffd54f;--accent3:#ff8a65;--text:#e3f2fd;--text-muted:#90a4c8;--text-dim:#4a6080;--danger:#ef5350;}
+  [data-theme="slate"]{--bg:#1e2228;--surface:#272c35;--surface2:#31373f;--border:#3d444f;--accent:#56cfb2;--accent2:#7eb8f7;--accent3:#f9a825;--text:#dde3ec;--text-muted:#8a9ab0;--text-dim:#505a68;--danger:#e57373;}
+  [data-theme="warm"]{--bg:#18120a;--surface:#241a0e;--surface2:#302214;--border:#45301a;--accent:#f6ad55;--accent2:#68d391;--accent3:#fc8181;--text:#fdf0e0;--text-muted:#c4a882;--text-dim:#7a6045;--danger:#fc8181;}
+  #theme-btn{background:none;border:1px solid var(--border);border-radius:7px;padding:6px 10px;color:var(--text-muted);cursor:pointer;font-size:12px;font-family:var(--font);display:flex;align-items:center;gap:6px;transition:all .15s;white-space:nowrap;flex-shrink:0;}
+  #theme-btn:hover{border-color:var(--accent);color:var(--accent);}
+  #theme-swatch{width:10px;height:10px;border-radius:50%;background:var(--accent);display:inline-block;flex-shrink:0;}
   *{box-sizing:border-box;margin:0;padding:0;}
   body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;font-size:13px;}
 
@@ -29,7 +37,7 @@
   .sidebar-title{font-size:15px;font-weight:700;color:var(--text);line-height:1.2;}
   .sidebar-subtitle{font-size:11px;color:var(--text-muted);margin-top:3px;}
   .nav-section{padding:12px 10px 4px;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);}
-  .nav-item{display:flex;align-items:center;gap:9px;padding:9px 14px;margin:1px 6px;border-radius:7px;cursor:pointer;color:var(--text-muted);font-size:12.5px;font-weight:450;transition:all .15s;border:none;background:none;width:calc(100% - 12px);text-align:left;}
+  .nav-item{display:flex;align-items:center;gap:9px;padding:9px 14px;margin:1px 6px;border-radius:7px;cursor:pointer;color:var(--text);font-size:12.5px;font-weight:500;transition:all .15s;border:none;background:none;width:calc(100% - 12px);text-align:left;}
   .nav-item:hover{background:var(--surface2);color:var(--text);}
   .nav-item.active{background:rgba(79,142,247,.12);color:var(--accent);font-weight:600;}
   .status-dot{width:6px;height:6px;border-radius:50%;background:var(--text-dim);margin-left:auto;flex-shrink:0;}
@@ -41,7 +49,7 @@
   #pin-btn:hover,#pin-btn.pinned{background:rgba(79,142,247,.1);color:var(--accent);border-color:var(--accent);}
 
   #main{min-height:100vh;display:flex;flex-direction:column;transition:margin-left .25s;}
-  #topbar{position:sticky;top:0;background:rgba(15,17,23,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:10px;z-index:50;flex-wrap:wrap;}
+  #topbar{position:sticky;top:0;background:var(--surface);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:10px;z-index:50;flex-wrap:wrap;}
   #tab-title{font-size:16px;font-weight:700;color:var(--text);flex:1;min-width:120px;}
   #row-count{font-size:11px;color:var(--text-muted);font-family:var(--mono);background:var(--surface2);padding:4px 10px;border-radius:20px;border:1px solid var(--border);white-space:nowrap;}
   #search-box{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:7px 12px 7px 32px;color:var(--text);font-size:12.5px;font-family:var(--font);width:200px;outline:none;transition:border-color .2s;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%237b82a0' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:10px center;}
@@ -224,14 +232,20 @@
   #content.themed .kpi-value { color: var(--sheet-accent,var(--text)); }
 
   /* colored cell values by data type */
-  td.cell-num   { color: var(--accent2) !important; }
+  td.cell-num   { color: var(--accent2) !important; font-weight:600; }
   td.cell-date  { color: var(--accent)  !important; }
   td.cell-ts    { color: var(--text-muted) !important; }
   td.cell-link  { color: var(--accent)  !important; }
-  td.cell-zero  { color: var(--text-dim) !important; font-style:italic; }
-  td.cell-neg   { color: var(--danger)  !important; }
+  td.cell-zero  { color: var(--text-muted) !important; font-style:italic; opacity:0.6; }
+  td.cell-neg   { color: var(--danger)  !important; font-weight:600; }
   td.cell-high  { color: var(--accent2) !important; font-weight:600; }
   td.cell-name  { color: var(--text)    !important; }
+  /* light theme — boost contrast for faint cells */
+  [data-theme="light"] td.cell-num  { color: #1a7a4a !important; }
+  [data-theme="light"] td.cell-zero { color: #9ba3c0 !important; }
+  [data-theme="light"] td.cell-date { color: #1a4fbf !important; }
+  [data-theme="light"] td.cell-ts   { color: #5b6080 !important; }
+  [data-theme="light"] td.cell-name { color: #1a1d2e !important; }
   td.cell-img   { }
 
   /* wastage sheet — number cells colored by group */
@@ -372,6 +386,10 @@
           <span class="dd-title">Filter by Date</span>
           <button class="dd-clear" onclick="clearDates()">Clear all</button>
         </div>
+        <label class="date-opt" style="border-bottom:1px solid var(--border);margin-bottom:4px;padding-bottom:8px;">
+          <input type="checkbox" id="select-all-dates" onchange="selectAllDates(this.checked)">
+          <span style="font-weight:600;color:var(--text);">Select All</span>
+        </label>
         <div id="date-list"></div>
       </div>
     </div>
@@ -395,6 +413,9 @@
       <option value="30">30 Days</option>
       <option value="60">60 Days</option>
     </select>
+    <button id="theme-btn" onclick="cycleTheme()" title="Switch theme">
+      🎨 <span id="theme-label">Dark</span>
+    </button>
     <button class="icon-btn" onclick="reloadAll()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
       Refresh
@@ -780,6 +801,7 @@ function buildDateFilter() {
 function toggleDate(key) {
   if (selectedDates.has(key)) selectedDates.delete(key);
   else selectedDates.add(key);
+  syncSelectAll();
   updateDateBadge();
   page = 1;
   if (isAnalysisView) switchToWastageAnalysis(true);
@@ -789,6 +811,29 @@ function toggleDate(key) {
 function clearDates() {
   selectedDates.clear();
   document.querySelectorAll('#date-list input[type=checkbox]').forEach(c => c.checked = false);
+  const sa = document.getElementById('select-all-dates');
+  if (sa) sa.checked = false;
+  updateDateBadge();
+  page = 1;
+  if (isAnalysisView) switchToWastageAnalysis(true);
+  else renderTable();
+}
+
+function syncSelectAll() {
+  const checkboxes = document.querySelectorAll('#date-list input[type=checkbox]');
+  const sa = document.getElementById('select-all-dates');
+  if (!sa || !checkboxes.length) return;
+  const allChecked = [...checkboxes].every(c => c.checked);
+  sa.checked = allChecked;
+}
+
+function selectAllDates(checked) {
+  const checkboxes = document.querySelectorAll('#date-list input[type=checkbox]');
+  selectedDates.clear();
+  checkboxes.forEach(c => {
+    c.checked = checked;
+    if (checked) selectedDates.add(c.value);
+  });
   updateDateBadge();
   page = 1;
   if (isAnalysisView) switchToWastageAnalysis(true);
@@ -2337,6 +2382,39 @@ function downloadPDF() {
 }
 
 init();
+
+// ── THEMES ──────────────────────────────────────────────────
+const THEMES = [
+  { key: null,    label: 'Dark'  },
+  { key: 'light', label: 'Light' },
+  { key: 'navy',  label: 'Navy'  },
+  { key: 'slate', label: 'Slate' },
+  { key: 'warm',  label: 'Warm'  },
+];
+let _themeIdx = 0;
+
+function applyColorTheme(idx) {
+  const t = THEMES[idx];
+  const root = document.documentElement;
+  if (t.key) root.setAttribute('data-theme', t.key);
+  else root.removeAttribute('data-theme');
+  const lbl = document.getElementById('theme-label');
+  if (lbl) lbl.textContent = t.label;
+  try { localStorage.setItem('md_theme_idx', idx); } catch(e) {}
+}
+
+function cycleTheme() {
+  _themeIdx = (_themeIdx + 1) % THEMES.length;
+  applyColorTheme(_themeIdx);
+}
+
+function initTheme() {
+  // always start Dark — don't restore saved theme
+  _themeIdx = 0;
+  applyColorTheme(0);
+}
+
+initTheme();
 </script>
 </body>
 </html>
